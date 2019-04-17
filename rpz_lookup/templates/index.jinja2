@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/bootstrap.min.css') }}" integrity="sha384-ggOyR0iXCbMQv3Xipma34MD+dH/1fQ784/j6cY/iJTQUOhcWr7x9JvoRxT2MZw1T">
+    <meta charset="UTF-8">
+    <title>RPZ domain lookup</title>
+</head>
+<body>
+<div class="container">
+    <h3 class="pt-3">RPZ domain lookup</h3>
+    <form method="post">
+      <div class="form-group">
+        <label for="inputDomain1">Domain name</label>
+        <input type="text" class="form-control {% if error %}is-invalid{% endif %}" id="inputDomain1" name="domain_name" aria-describedby="domainNameHelp" placeholder="Enter domain name">
+        <div class="invalid-feedback">
+          {{ error }}
+        </div>
+        <small id="domainHelp" class="form-text text-muted">Enter a FQDN ex. host.example.com</small>
+      </div>
+      <button type="submit" class="btn btn-primary">Submit</button>
+    </form>
+    {% if result is defined %}
+        <h4 class="pt-3">Result</h4>
+        <div class="card bg-light">
+            <div class="card-body">
+                {% for item in result %}
+                <pre>EventID {{ item.event_id }} | {{ item.timestamp|ts }} | {{ item.value }} | {{ item.comment }}</pre>
+                {% else %}
+                    <pre>No data</pre>
+                {% endfor %}
+            </div>
+        </div>
+    {% endif %}
+</div>
+</body>
+</html>
