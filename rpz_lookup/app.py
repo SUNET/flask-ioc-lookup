@@ -8,7 +8,7 @@ from flask import Flask, render_template, request
 from whitenoise import WhiteNoise
 from validators import domain
 from flask_limiter import Limiter
-from flask_limiter.util import get_remote_address
+from flask_limiter.util import get_ipaddr
 
 from rpz_lookup.misp_api import MISPApi
 
@@ -31,7 +31,7 @@ app.wsgi_app = WhiteNoise(app.wsgi_app, root=config.get('STATIC_FILES', 'rpz_loo
 misp_api = MISPApi(config)
 
 # Init rate limiting
-limiter = Limiter(app, key_func=get_remote_address)
+limiter = Limiter(app, key_func=get_ipaddr)
 
 
 def rate_limit_from_config():
