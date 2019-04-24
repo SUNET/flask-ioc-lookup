@@ -1,6 +1,9 @@
 # -*- coding: utf-8 -*-
 
+from typing import Optional, List
+import datetime
 from pymisp import PyMISP
+from pymisp.mispevent import MISPEvent, MISPAttribute
 
 __author__ = 'lundberg'
 
@@ -20,37 +23,16 @@ class MISPApi(object):
         result = self.search(type='domain', value=domain_name)
         return result['response'].get('Attribute', [])
 
+    def add_event(self, domain_names: list, info: str, tags: List, comment: str, to_ids: bool,
+                  ts: Optional[int] = None):
+        attrs = []
+        for name in domain_names:
+            attr = MISPAttribute()
+            attr.from_dict(type='domain', category='Network activity', to_ids=to_ids, value=name,
+                           comment=comment, timestamp=ts)
+            attrs.append(attr)
 
-
-
-# {
-#     "response": {
-#         "Attribute": [
-#             {
-#                 "id": "984076",
-#                 "event_id": "9259",
-#                 "object_id": "0",
-#                 "object_relation": null,
-#                 "category": "Network activity",
-#                 "type": "domain",
-#                 "to_ids": true,
-#                 "uuid": "5cb4806f-6220-4ad4-9989-370d6440000b",
-#                 "timestamp": "1555333409",
-#                 "distribution": "5",
-#                 "sharing_group_id": "0",
-#                 "comment": "A cert with this CN was logged by Certificate Transparency",
-#                 "deleted": false,
-#                 "disable_correlation": false,
-#                 "value": "idp.it.su.se.llit.cf",
-#                 "Event": {
-#                     "org_id": "10",
-#                     "distribution": "3",
-#                     "id": "9259",
-#                     "info": "Potential phishing site for IdP at: idp.it.su.se",
-#                     "orgc_id": "10",
-#                     "uuid": "5cb47f92-87a8-4ad4-81e0-311c6440000b"
-#                 }
-#             }
-#         ]
-#     }
-# }
+        event = MISPEvent()
+        event.from_dict(info=info, Attribute=attrs, Tag=tags, date=datetime.date.today(), published=True)
+        print(event)
+        return self.pymisp.add_event(event)
