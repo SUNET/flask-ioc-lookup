@@ -9,6 +9,7 @@
 <div class="container">
     {% if result is undefined %}
         <h4 class="pt-3">Bulk report</h4>
+        <p class="float-right">Logged in as: {{ user }}</p>
         <form method="post">
           <div class="form-group">
             <label for="inputDomains1">Domain names</label>

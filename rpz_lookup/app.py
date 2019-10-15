@@ -26,7 +26,12 @@ except FileNotFoundError as e:
 # Init app
 app = Flask(__name__)
 app.config.from_mapping(config)
+# Init logging
+app.config.setdefault('LOG_LEVEL', 'INFO')
+app.logger.setLevel(app.config['LOG_LEVEL'])
+# Init static files
 app.wsgi_app = WhiteNoise(app.wsgi_app, root=config.get('STATIC_FILES', 'rpz_lookup/static/'))
+
 
 # Init MISP API
 misp_api = MISPApi(config)
@@ -55,10 +60,10 @@ def index():
         domain_name = request.form.get('domain_name')
         if domain_name and domain(domain_name):
             result = misp_api.domain_name_lookup(domain_name)
-            return render_template('index.jinja2', result=result, domain_name=domain_name)
+            return render_template('index.jinja2', result=result, domain_name=domain_name, user=get_ipaddr_or_eppn())
         error = f'Invalid domain name: "{domain_name}"'
 
-    return render_template('index.jinja2', error=error)
+    return render_template('index.jinja2', error=error, user=get_ipaddr_or_eppn())
 
 
 @app.route('/report', methods=['GET', 'POST'])
@@ -71,12 +76,13 @@ def report():
             if domain_name:
                 domain_name = ''.join(domain_name.split())  # Normalize whitespace
                 if not domain(domain_name):
-                    return render_template('report.jinja2', error=f'Invalid domain name: "{domain_name}"')
+                    return render_template('report.jinja2', error=f'Invalid domain name: "{domain_name}"',
+                                           user=get_ipaddr_or_eppn())
                 domain_names.append(domain_name)
 
         if not domain_names:
             error = f'No valid domain name found'
-            return render_template('report.jinja2', error=error)
+            return render_template('report.jinja2', error=error, user=get_ipaddr_or_eppn())
 
         reporter = get_ipaddr_or_eppn()
         tags = ['OSINT', 'TLP:GREEN']
@@ -84,8 +90,8 @@ def report():
                                  tags=tags, comment=f'Reported by {reporter}', to_ids=True)
         current_app.logger.debug(ret)
         result = 'success'
-        return render_template('report.jinja2', result=result, domain_names=domain_names)
-    return render_template('report.jinja2')
+        return render_template('report.jinja2', result=result, domain_names=domain_names, user=get_ipaddr_or_eppn())
+    return render_template('report.jinja2', user=get_ipaddr_or_eppn())
 
 
 if __name__ == '__main__':
