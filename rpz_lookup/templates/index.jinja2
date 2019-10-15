@@ -21,7 +21,7 @@
       <button type="submit" class="btn btn-primary">Submit</button>
     </form>
     {% if result is defined %}
-        <h4 class="pt-3">Result</h4>
+        <h4 class="pt-3">Result for {{ domain_name }}</h4>
         <div class="card bg-light">
             <div class="card-body">
                 {% for item in result %}
