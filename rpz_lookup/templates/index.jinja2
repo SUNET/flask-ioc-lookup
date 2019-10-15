@@ -32,11 +32,13 @@
         </div>
         {% if not result %}
             <form action="{{ url_for('report') }}" method="post">
-                <input type="hidden" id="inputDomain1" name="domain_name" value="{{ domain_name }}">
+                <input type="hidden" id="inputDomains1" name="domain_names" value="{{ domain_name }}">
                 <button type="submit" class="btn btn-link">Click here to report {{ domain_name }}</button>
             </form>
         {% endif %}
     {% endif %}
+    <hr>
+    <p>If you want to report multiple domains, use the <a href="{{ url_for('report') }}">bulk report form</a>.</p>
 </div>
 </body>
 </html>

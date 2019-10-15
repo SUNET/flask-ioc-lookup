@@ -61,21 +61,31 @@ def index():
     return render_template('index.jinja2', error=error)
 
 
-@app.route('/report', methods=['POST'])
+@app.route('/report', methods=['GET', 'POST'])
 @limiter.limit(rate_limit_from_config)
 def report():
-    domain_name = request.form.get('domain_name')
-    if domain_name and domain(domain_name):
+    if request.method == 'POST':
+        form_input = request.form.get('domain_names').split('\n')
+        domain_names = []
+        for domain_name in form_input:
+            if domain_name:
+                domain_name = ''.join(domain_name.split())  # Normalize whitespace
+                if not domain(domain_name):
+                    return render_template('report.jinja2', error=f'Invalid domain name: "{domain_name}"')
+                domain_names.append(domain_name)
+
+        if not domain_names:
+            error = f'No valid domain name found'
+            return render_template('report.jinja2', error=error)
+
         reporter = get_ipaddr_or_eppn()
         tags = ['OSINT', 'TLP:GREEN']
-        ret = misp_api.add_event(domain_names=[domain_name], info='From flask_rpz_lookup',
-                                    tags=tags, comment=f'Reported by {reporter}', to_ids=True)
+        ret = misp_api.add_event(domain_names=domain_names, info='From flask_rpz_lookup',
+                                 tags=tags, comment=f'Reported by {reporter}', to_ids=True)
         current_app.logger.debug(ret)
-        result = f'{domain_name} reported successfully'
-        return render_template('report.jinja2', result=result, domain_name=domain_name)
-
-    error = f'Invalid domain name: "{domain_name}"'
-    return render_template('report.jinja2', error=error)
+        result = 'success'
+        return render_template('report.jinja2', result=result, domain_names=domain_names)
+    return render_template('report.jinja2')
 
 
 if __name__ == '__main__':

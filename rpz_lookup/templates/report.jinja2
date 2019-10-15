@@ -7,17 +7,38 @@
 </head>
 <body>
 <div class="container">
-    <h4 class="pt-3">Report result</h4>
-    <div class="card bg-light">
-        <div class="card-body">
-            {% if result %}
-                <pre>{{ result }}</pre>
-            {% else %}
-                <pre>{{ error }}</pre>
-            {% endif %}
+    {% if result is undefined %}
+        <h4 class="pt-3">Bulk report</h4>
+        <form method="post">
+          <div class="form-group">
+            <label for="inputDomains1">Domain names</label>
+            <textarea type="text" class="form-control {% if error %}is-invalid{% endif %}" id="inputDomains1" name="domain_names" aria-describedby="domainNameHelp" placeholder="Enter domain names" rows="3"></textarea>
+            <div class="invalid-feedback">
+              {{ error }}
+            </div>
+            <small id="domainHelp" class="form-text text-muted">Enter multiple FQDN ex. host.example.com. One per line</small>
+          </div>
+          <button type="submit" class="btn btn-primary">Submit</button>
+        </form>
+    {% else %}
+        <h4 class="pt-3">Report result</h4>
+        <div class="card bg-light">
+            <div class="card-body">
+                {% if result %}
+                    {% for domain_name in domain_names %}
+                        {% if loop.last %}
+                            <pre>{% if loop.length > 1 %}and {% endif %}{{ domain_name }} reported successfully.</pre>
+                        {% else %}
+                            <pre>{{ domain_name }},</pre>
+                        {% endif %}
+                    {% endfor %}
+                {% else %}
+                    <pre>{{ error }}</pre>
+                {% endif %}
+            </div>
         </div>
-    </div>
-    <a href="{{ url_for('index') }}">Back</a>
+    {% endif %}
+    <a class="float-right" href="{{ url_for('index') }}">Back</a>
 </div>
 </body>
 </html>
