@@ -30,6 +30,12 @@
                 {% endfor %}
             </div>
         </div>
+        {% if not result %}
+            <form action="{{ url_for('report') }}" method="post">
+                <input type="hidden" id="inputDomain1" name="domain_name" value="{{ domain_name }}">
+                <button type="submit" class="btn btn-link">Click here to report {{ domain_name }}</button>
+            </form>
+        {% endif %}
     {% endif %}
 </div>
 </body>

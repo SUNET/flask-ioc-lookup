@@ -1,9 +1,13 @@
 # -*- coding: utf-8 -*-
 
-from typing import Optional, List
 import datetime
+import logging
+from typing import Optional, List
+
 from pymisp import PyMISP
 from pymisp.mispevent import MISPEvent, MISPAttribute
+
+logger = logging.getLogger(__name__)
 
 __author__ = 'lundberg'
 
@@ -34,5 +38,5 @@ class MISPApi(object):
 
         event = MISPEvent()
         event.from_dict(info=info, Attribute=attrs, Tag=tags, date=datetime.date.today(), published=True)
-        print(event)
+        logger.debug(event)
         return self.pymisp.add_event(event)

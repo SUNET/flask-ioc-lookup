@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/bootstrap.min.css') }}" integrity="sha384-ggOyR0iXCbMQv3Xipma34MD+dH/1fQ784/j6cY/iJTQUOhcWr7x9JvoRxT2MZw1T">
+    <meta charset="UTF-8">
+    <title>RPZ domain lookup - Report result</title>
+</head>
+<body>
+<div class="container">
+    <h4 class="pt-3">Report result</h4>
+    <div class="card bg-light">
+        <div class="card-body">
+            {% if result %}
+                <pre>{{ result }}</pre>
+            {% else %}
+                <pre>{{ error }}</pre>
+            {% endif %}
+        </div>
+    </div>
+    <a href="{{ url_for('index') }}">Back</a>
+</div>
+</body>
+</html>

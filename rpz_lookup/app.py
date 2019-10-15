@@ -1,16 +1,17 @@
 # -*- coding: utf-8 -*-
 
 import sys
-import yaml
-from os import environ
 from datetime import datetime
-from flask import Flask, render_template, request
-from whitenoise import WhiteNoise
-from validators import domain
+from os import environ
+
+import yaml
+from flask import Flask, render_template, request, current_app
 from flask_limiter import Limiter
-from flask_limiter.util import get_ipaddr
+from validators import domain
+from whitenoise import WhiteNoise
 
 from rpz_lookup.misp_api import MISPApi
+from rpz_lookup.util import get_ipaddr_or_eppn
 
 # Read config
 config_path = environ.get('RPZ_LOOKUP_CONFIG', 'config.yaml')
@@ -31,7 +32,7 @@ app.wsgi_app = WhiteNoise(app.wsgi_app, root=config.get('STATIC_FILES', 'rpz_loo
 misp_api = MISPApi(config)
 
 # Init rate limiting
-limiter = Limiter(app, key_func=get_ipaddr)
+limiter = Limiter(app, key_func=get_ipaddr_or_eppn)
 
 
 def rate_limit_from_config():
@@ -54,11 +55,27 @@ def index():
         domain_name = request.form.get('domain_name')
         if domain_name and domain(domain_name):
             result = misp_api.domain_name_lookup(domain_name)
-            #result = misp_api.search(type='org_id', value='*')
-            return render_template('index.jinja2', result=result)
-        error = 'Invalid domain name'
+            return render_template('index.jinja2', result=result, domain_name=domain_name)
+        error = f'Invalid domain name: "{domain_name}"'
 
     return render_template('index.jinja2', error=error)
+
+
+@app.route('/report', methods=['POST'])
+@limiter.limit(rate_limit_from_config)
+def report():
+    domain_name = request.form.get('domain_name')
+    if domain_name and domain(domain_name):
+        reporter = get_ipaddr_or_eppn()
+        tags = ['OSINT', 'TLP:GREEN']
+        ret = misp_api.add_event(domain_names=[domain_name], info='From flask_rpz_lookup',
+                                    tags=tags, comment=f'Reported by {reporter}', to_ids=True)
+        current_app.logger.debug(ret)
+        result = f'{domain_name} reported successfully'
+        return render_template('report.jinja2', result=result, domain_name=domain_name)
+
+    error = f'Invalid domain name: "{domain_name}"'
+    return render_template('report.jinja2', error=error)
 
 
 if __name__ == '__main__':
