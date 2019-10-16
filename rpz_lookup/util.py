@@ -11,7 +11,7 @@ def get_ipaddr_or_eppn():
     """
     current_app.logger.debug('REQUEST ENVIRONMENT:')
     current_app.logger.debug(request.environ)
-    identifier = request.environ.pop('HTTP_EPPN', None)
+    identifier = request.environ.get('HTTP_EPPN', None)
     current_app.logger.debug(f'Identifier from request environment: {identifier}')
     if not identifier:
         current_app.logger.warning('HTTP_EPPN is missing from request environment')
