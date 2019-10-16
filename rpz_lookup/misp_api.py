@@ -2,7 +2,7 @@
 
 import datetime
 import logging
-from typing import Optional, List
+from typing import Optional, List, Any
 
 from pymisp import PyMISP
 from pymisp.mispevent import MISPEvent, MISPAttribute
@@ -23,7 +23,7 @@ class MISPApi(object):
     def org_name_id_mapping(self):
         pass
 
-    def domain_name_lookup(self, domain_name: str):
+    def domain_name_lookup(self, domain_name: str) -> List[Any]:
         result = self.search(type='domain', value=domain_name)
         return result['response'].get('Attribute', [])
 

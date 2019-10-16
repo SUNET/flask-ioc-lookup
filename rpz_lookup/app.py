@@ -57,11 +57,18 @@ def _jinja2_filter_ts(ts: str):
 def index():
     error = None
     if request.method == 'POST':
-        domain_name = request.form.get('domain_name')
-        if domain_name and domain(domain_name):
-            result = misp_api.domain_name_lookup(domain_name)
-            return render_template('index.jinja2', result=result, domain_name=domain_name, user=get_ipaddr_or_eppn())
-        error = f'Invalid domain name: "{domain_name}"'
+        original_domain_name = request.form.get('domain_name')
+        parent_domain_name = None
+        if original_domain_name and domain(original_domain_name):
+            result = misp_api.domain_name_lookup(original_domain_name)
+            if not result:
+                # Try searching for a less exact domain name
+                parent_domain_name = '.'.join(original_domain_name.split('.')[1:])
+                if parent_domain_name and domain(parent_domain_name):
+                    result = misp_api.domain_name_lookup(parent_domain_name)
+            return render_template('index.jinja2', result=result, original_domain_name=original_domain_name,
+                                   parent_domain_name=parent_domain_name, user=get_ipaddr_or_eppn())
+        error = f'Invalid domain name: "{original_domain_name}"'
 
     return render_template('index.jinja2', error=error, user=get_ipaddr_or_eppn())
 

@@ -21,20 +21,23 @@
       <button type="submit" class="btn btn-primary">Submit</button>
     </form>
     {% if result is defined %}
-        <h4 class="pt-3">Result for {{ domain_name }}</h4>
+        <h4 class="pt-3">Result for {{ original_domain_name }}</h4>
+        {% if parent_domain_name %}
+            <small id="resultHelp" class="text-muted">No result for {{ original_domain_name }} found, showing result for {{ parent_domain_name }}.</small>
+        {% endif %}
         <div class="card bg-light">
             <div class="card-body">
                 {% for item in result %}
-                <pre>EventID {{ item.event_id }} | {{ item.timestamp|ts }} | {{ item.value }} | {{ item.comment }}</pre>
+                    <pre>EventID {{ item.event_id }} | {{ item.timestamp|ts }} | {{ item.value }} | {{ item.comment }}</pre>
                 {% else %}
                     <pre>No data</pre>
                 {% endfor %}
             </div>
         </div>
-        {% if not result %}
+        {% if parent_domain_name or not result %}
             <form action="{{ url_for('report') }}" method="post">
-                <input type="hidden" id="inputDomains1" name="domain_names" value="{{ domain_name }}">
-                <button type="submit" class="btn btn-link">Click here to report {{ domain_name }}</button>
+                <input type="hidden" id="inputDomains1" name="domain_names" value="{{ original_domain_name }}">
+                <button type="submit" class="btn btn-link">Click here to report {{ original_domain_name }}</button>
             </form>
         {% endif %}
     {% endif %}
