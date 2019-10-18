@@ -28,7 +28,7 @@ class MISPApi(object):
         return result['response'].get('Attribute', [])
 
     def add_event(self, domain_names: list, info: str, tags: List, comment: str, to_ids: bool,
-                  ts: Optional[int] = None):
+                  ts: Optional[int] = None, published: Optional[bool] = False):
         attrs = []
         for name in domain_names:
             attr = MISPAttribute()
@@ -37,6 +37,6 @@ class MISPApi(object):
             attrs.append(attr)
 
         event = MISPEvent()
-        event.from_dict(info=info, Attribute=attrs, Tag=tags, date=datetime.date.today(), published=True)
+        event.from_dict(info=info, Attribute=attrs, Tag=tags, date=datetime.date.today(), published=published)
         logger.debug(event)
         return self.pymisp.add_event(event)

@@ -18,7 +18,7 @@ def main(path, api, delimiter=';', quotechar='"'):
             # TODO: More columns
             domain_names.append(domain_name)
         r = api.add_event(domain_names=domain_names, info='From misp_event_importer', tags=['OSINT', 'TLP:WHITE'],
-                          comment='From CSV', to_ids=True)
+                          comment='From CSV', to_ids=True, published=True)
         print(r)
 
 

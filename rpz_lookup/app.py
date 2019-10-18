@@ -11,7 +11,7 @@ from validators import domain
 from whitenoise import WhiteNoise
 
 from rpz_lookup.misp_api import MISPApi
-from rpz_lookup.util import get_ipaddr_or_eppn
+from rpz_lookup.utils import get_ipaddr_or_eppn, is_trusted_user
 
 # Read config
 config_path = environ.get('RPZ_LOOKUP_CONFIG', 'config.yaml')
@@ -31,7 +31,16 @@ app.config.setdefault('LOG_LEVEL', 'INFO')
 app.logger.setLevel(app.config['LOG_LEVEL'])
 # Init static files
 app.wsgi_app = WhiteNoise(app.wsgi_app, root=config.get('STATIC_FILES', 'rpz_lookup/static/'))
-
+# Init trusted user list
+app.trusted_users = list()
+if app.config.get('TRUSTED_USERS'):
+    try:
+        with open(app.config['TRUSTED_USERS']) as f:
+            app.trusted_users = yaml.safe_load(f)['eppn']
+        app.logger.info('Loaded trusted user list')
+        app.logger.debug(f'Trusted user list: {app.trusted_users}')
+    except IOError as e:
+        app.logger.warning(f'Could not initialize trusted user list: {e}')
 
 # Init MISP API
 misp_api = MISPApi(config)
@@ -55,6 +64,7 @@ def _jinja2_filter_ts(ts: str):
 @app.route('/', methods=['GET', 'POST'])
 @limiter.limit(rate_limit_from_config)
 def index():
+    user = get_ipaddr_or_eppn()
     error = None
     if request.method == 'POST':
         original_domain_name = request.form.get('domain_name')
@@ -67,15 +77,16 @@ def index():
                 if parent_domain_name and domain(parent_domain_name):
                     result = misp_api.domain_name_lookup(parent_domain_name)
             return render_template('index.jinja2', result=result, original_domain_name=original_domain_name,
-                                   parent_domain_name=parent_domain_name, user=get_ipaddr_or_eppn())
+                                   parent_domain_name=parent_domain_name, user=user)
         error = f'Invalid domain name: "{original_domain_name}"'
 
-    return render_template('index.jinja2', error=error, user=get_ipaddr_or_eppn())
+    return render_template('index.jinja2', error=error, user=user)
 
 
 @app.route('/report', methods=['GET', 'POST'])
 @limiter.limit(rate_limit_from_config)
 def report():
+    user = get_ipaddr_or_eppn()
     if request.method == 'POST':
         form_input = request.form.get('domain_names').split('\n')
         domain_names = []
@@ -84,21 +95,23 @@ def report():
                 domain_name = ''.join(domain_name.split())  # Normalize whitespace
                 if not domain(domain_name):
                     return render_template('report.jinja2', error=f'Invalid domain name: "{domain_name}"',
-                                           user=get_ipaddr_or_eppn())
+                                           user=user)
                 domain_names.append(domain_name)
 
         if not domain_names:
             error = f'No valid domain name found'
-            return render_template('report.jinja2', error=error, user=get_ipaddr_or_eppn())
+            return render_template('report.jinja2', error=error, user=user)
 
-        reporter = get_ipaddr_or_eppn()
         tags = ['OSINT', 'TLP:GREEN']
+        publish = False
+        if is_trusted_user(user):
+            publish = True
         ret = misp_api.add_event(domain_names=domain_names, info='From flask_rpz_lookup',
-                                 tags=tags, comment=f'Reported by {reporter}', to_ids=True)
+                                 tags=tags, comment=f'Reported by {user}', to_ids=True, published=publish)
         current_app.logger.debug(ret)
         result = 'success'
-        return render_template('report.jinja2', result=result, domain_names=domain_names, user=get_ipaddr_or_eppn())
-    return render_template('report.jinja2', user=get_ipaddr_or_eppn())
+        return render_template('report.jinja2', result=result, domain_names=domain_names, user=user)
+    return render_template('report.jinja2', user=user)
 
 
 if __name__ == '__main__':
