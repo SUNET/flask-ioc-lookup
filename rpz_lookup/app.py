@@ -5,7 +5,7 @@ from datetime import datetime
 from os import environ
 
 import yaml
-from flask import Flask, render_template, request, current_app
+from flask import Flask, current_app, render_template, request
 from flask_limiter import Limiter
 from validators import domain
 from whitenoise import WhiteNoise
@@ -56,7 +56,7 @@ def rate_limit_from_config():
 @app.template_filter('ts')
 def _jinja2_filter_ts(ts: str):
     dt = datetime.utcfromtimestamp(int(ts))
-    fmt='%Y-%m-%d %H:%M:%S'
+    fmt = '%Y-%m-%d %H:%M:%S'
     return dt.strftime(fmt)
 
 
@@ -76,8 +76,13 @@ def index():
                 parent_domain_name = '.'.join(original_domain_name.split('.')[1:])
                 if parent_domain_name and domain(parent_domain_name):
                     result = misp_api.domain_name_lookup(parent_domain_name)
-            return render_template('index.jinja2', result=result, original_domain_name=original_domain_name,
-                                   parent_domain_name=parent_domain_name, user=user)
+            return render_template(
+                'index.jinja2',
+                result=result,
+                original_domain_name=original_domain_name,
+                parent_domain_name=parent_domain_name,
+                user=user,
+            )
         error = f'Invalid domain name: "{original_domain_name}"'
 
     return render_template('index.jinja2', error=error, user=user)
@@ -95,8 +100,7 @@ def report():
             if domain_name:
                 domain_name = ''.join(domain_name.split())  # Normalize whitespace
                 if not domain(domain_name):
-                    return render_template('report.jinja2', error=f'Invalid domain name: "{domain_name}"',
-                                           user=user)
+                    return render_template('report.jinja2', error=f'Invalid domain name: "{domain_name}"', user=user)
                 domain_names.append(domain_name)
 
         if not domain_names:
@@ -108,9 +112,15 @@ def report():
         if is_trusted_user(user):
             publish = True
 
-        ret = misp_api.add_event(domain_names=domain_names, info='From flask_rpz_lookup',
-                                 tags=tags, comment=f'Reported by {user}', to_ids=True, reference=reference_in,
-                                 published=publish)
+        ret = misp_api.add_event(
+            domain_names=domain_names,
+            info='From flask_rpz_lookup',
+            tags=tags,
+            comment=f'Reported by {user}',
+            to_ids=True,
+            reference=reference_in,
+            published=publish,
+        )
         current_app.logger.debug(ret)
         result = 'success'
         return render_template('report.jinja2', result=result, domain_names=domain_names, user=user)

@@ -1,4 +1,5 @@
 config.yaml
+trusted_users.yaml
 env
 __pycache__
 .idea

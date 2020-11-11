@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
 
-import sys
 import csv
+import sys
+
 import yaml
 
 from rpz_lookup.misp_api import MISPApi
@@ -17,8 +18,14 @@ def main(path, api, delimiter=';', quotechar='"'):
             domain_name = row[0]
             # TODO: More columns
             domain_names.append(domain_name)
-        r = api.add_event(domain_names=domain_names, info='From misp_event_importer', tags=['OSINT', 'TLP:WHITE'],
-                          comment='From CSV', to_ids=True, published=True)
+        r = api.add_event(
+            domain_names=domain_names,
+            info='From misp_event_importer',
+            tags=['OSINT', 'TLP:WHITE'],
+            comment='From CSV',
+            to_ids=True,
+            published=True,
+        )
         print(r)
 
 

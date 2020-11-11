@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 __author__ = 'lundberg'
 
-from flask import request, current_app
+from flask import current_app, request
 from flask_limiter.util import get_ipaddr
 
 
