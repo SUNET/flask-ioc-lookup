@@ -12,12 +12,17 @@
         <p class="float-right">Logged in as: {{ user }}</p>
         <form method="post">
           <div class="form-group">
-            <label for="inputDomains1">Domain names</label>
-            <textarea type="text" class="form-control {% if error %}is-invalid{% endif %}" id="inputDomains1" name="domain_names" aria-describedby="domainNameHelp" placeholder="Enter domain names" rows="3"></textarea>
+            <label for="inputDomains1">Domain names for reporting</label>
+            <textarea type="text" class="form-control {% if error %}is-invalid{% endif %}" id="inputDomains1" name="domain_names" aria-describedby="domainNameHelp" placeholder="Enter domain names to report" rows="3"></textarea>
+            <small id="domainHelp" class="form-text text-muted">Enter multiple FQDN ex. host.example.com. One per line.</small>
+
+            <label for="inputReference1">Reference (Optional)</label>
+            <input type="text" class="form-control" id="inputReference1"
+                   name="reference" aria-describedby="referenceHelp" placeholder="Enter reference"/>
+            <small id="referenceHelp" class="form-text text-muted">Enter a reference if any, ex. ticket number or similar</small>
             <div class="invalid-feedback">
               {{ error }}
             </div>
-            <small id="domainHelp" class="form-text text-muted">Enter multiple FQDN ex. host.example.com. One per line</small>
           </div>
           <button type="submit" class="btn btn-primary">Submit</button>
         </form>

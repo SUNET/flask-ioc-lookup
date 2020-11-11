@@ -11,14 +11,14 @@
     <p class="float-right">Logged in as: {{ user }}</p>
     <form method="post">
       <div class="form-group">
-        <label for="inputDomain1">Domain name</label>
-        <input type="text" class="form-control {% if error %}is-invalid{% endif %}" id="inputDomain1" name="domain_name" aria-describedby="domainNameHelp" placeholder="Enter domain name">
+        <label for="inputDomain1">Domain name search</label>
+        <input type="text" class="form-control {% if error %}is-invalid{% endif %}" id="inputDomain1" name="domain_name" aria-describedby="domainNameHelp" placeholder="Search for domain name">
         <div class="invalid-feedback">
           {{ error }}
         </div>
         <small id="domainHelp" class="form-text text-muted">Enter a FQDN ex. host.example.com</small>
       </div>
-      <button type="submit" class="btn btn-primary">Submit</button>
+      <button type="submit" class="btn btn-primary">Search</button>
     </form>
     {% if result is defined %}
         <h4 class="pt-3">Result for {{ original_domain_name }}</h4>
@@ -35,9 +35,19 @@
             </div>
         </div>
         {% if parent_domain_name or not result %}
-            <form action="{{ url_for('report') }}" method="post">
-                <input type="hidden" id="inputDomains1" name="domain_names" value="{{ original_domain_name }}">
-                <button type="submit" class="btn btn-link">Click here to report {{ original_domain_name }}</button>
+            <hr>
+            <h6>Report domain</h6>
+            <form class="form-inline" action="{{ url_for('report') }}" method="post">
+              <div class="form-group mb-2">
+                <label for="inputDomains1" class="sr-only">Domain</label>
+                <input type="text" readonly class="form-control" id="inputDomains1" name="domain_names" value="{{ original_domain_name }}">
+              </div>
+              <div class="form-group mx-sm-3 mb-2">
+                <label for="inputReference1" class="sr-only">Password</label>
+                <input type="text" class="form-control" id="inputReference1"
+                       name="reference" aria-describedby="referenceHelp" placeholder="Enter reference (Optional)">
+              </div>
+              <button type="submit" class="btn btn-primary mb-2">Report</button>
             </form>
         {% endif %}
     {% endif %}

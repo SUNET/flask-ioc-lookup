@@ -1,6 +1,6 @@
 Flask>=1.0.2
 Jinja2>=2.10.1
-pymisp>=2.4.103
+pymisp>=2.4.134
 PyYAML>=5.1
 validators>=0.12.5
 whitenoise>=4.1.2

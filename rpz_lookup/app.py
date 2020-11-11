@@ -88,9 +88,10 @@ def index():
 def report():
     user = get_ipaddr_or_eppn()
     if request.method == 'POST':
-        form_input = request.form.get('domain_names').split('\n')
+        domain_names_in = request.form.get('domain_names', '').split('\n')
+        reference_in = ' '.join(request.form.get('reference', '').split())  # Normalise whitespace
         domain_names = []
-        for domain_name in form_input:
+        for domain_name in domain_names_in:
             if domain_name:
                 domain_name = ''.join(domain_name.split())  # Normalize whitespace
                 if not domain(domain_name):
@@ -106,8 +107,10 @@ def report():
         publish = False
         if is_trusted_user(user):
             publish = True
+
         ret = misp_api.add_event(domain_names=domain_names, info='From flask_rpz_lookup',
-                                 tags=tags, comment=f'Reported by {user}', to_ids=True, published=publish)
+                                 tags=tags, comment=f'Reported by {user}', to_ids=True, reference=reference_in,
+                                 published=publish)
         current_app.logger.debug(ret)
         result = 'success'
         return render_template('report.jinja2', result=result, domain_names=domain_names, user=user)
