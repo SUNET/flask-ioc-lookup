@@ -1,12 +1,14 @@
 # -*- coding: utf-8 -*-
 
 import sys
+from contextlib import contextmanager
 from datetime import datetime
 from os import environ
 
 import yaml
-from flask import Flask, current_app, render_template, request
+from flask import Flask, current_app, render_template, request, abort
 from flask_limiter import Limiter
+from pymisp import PyMISPError
 from validators import domain
 from whitenoise import WhiteNoise
 
@@ -32,7 +34,7 @@ app.logger.setLevel(app.config['LOG_LEVEL'])
 # Init static files
 app.wsgi_app = WhiteNoise(app.wsgi_app, root=config.get('STATIC_FILES', 'rpz_lookup/static/'))
 # Init trusted user list
-app.trusted_users = list()
+app.trusted_users = []
 if app.config.get('TRUSTED_USERS'):
     try:
         with open(app.config['TRUSTED_USERS']) as f:
@@ -42,8 +44,54 @@ if app.config.get('TRUSTED_USERS'):
     except IOError as e:
         app.logger.warning(f'Could not initialize trusted user list: {e}')
 
-# Init MISP API
-misp_api = MISPApi(config)
+app.trusted_orgs = {}
+if app.config.get('TRUSTED_ORGS'):
+    try:
+        with open(app.config['TRUSTED_ORGS']) as f:
+            app.trusted_orgs = yaml.safe_load(f)
+        app.logger.info('Loaded trusted org list')
+        app.logger.debug(f'Trusted org config: {app.trusted_orgs}')
+    except IOError as e:
+        app.logger.warning(f'Could not initialize trusted org mapping: {e}')
+
+    # Make all orgs lower case
+    org_domains = {}
+    for key, value in app.trusted_orgs['org_domains'].items():
+        org_domains[key.lower()] = value
+    app.trusted_orgs['org_domains'] = org_domains
+
+
+# Init MISP APIs
+misp_apis = {'default': MISPApi(app.config['MISP_URL'], app.config['MISP_KEY'], app.config['MISP_VERIFYCERT'])}
+
+
+@contextmanager
+def misp_api_for(user: str):
+    org_domain = user.split('@')[-1].lower()
+    app.logger.debug(f'User {user} mapped to domain {org_domain}')
+
+    # Lazy load apis per org
+    if org_domain not in misp_apis and org_domain in app.trusted_orgs['org_domains']:
+        try:
+            misp_apis[org_domain] = MISPApi(
+                app.config['MISP_URL'],
+                app.trusted_orgs['org_domains'][org_domain],
+                app.config['MISP_VERIFYCERT'],
+            )
+            app.logger.info(f'Loaded api for {org_domain}')
+        except PyMISPError:
+            abort(400, 'Authentication failed. Make sure your organizations api key is up to date.')
+        except Exception as ex:
+            app.logger.exception(f'Could not load domain mapping for {org_domain}: {ex}')
+
+    api = misp_apis.get(org_domain)
+    if api is None:
+        app.logger.debug('Using default api')
+        yield misp_apis['default']
+    else:
+        app.logger.debug(f'Using {org_domain} api')
+        yield api
+
 
 # Init rate limiting
 limiter = Limiter(app, key_func=get_ipaddr_or_eppn)
@@ -70,12 +118,14 @@ def index():
         original_domain_name = request.form.get('domain_name')
         parent_domain_name = None
         if original_domain_name and domain(original_domain_name):
-            result = misp_api.domain_name_lookup(original_domain_name)
+            with misp_api_for('default') as api:
+                result = api.domain_name_lookup(original_domain_name)
             if not result:
                 # Try searching for a less exact domain name
                 parent_domain_name = '.'.join(original_domain_name.split('.')[1:])
                 if parent_domain_name and domain(parent_domain_name):
-                    result = misp_api.domain_name_lookup(parent_domain_name)
+                    with misp_api_for('default') as api:
+                        result = api.domain_name_lookup(parent_domain_name)
             return render_template(
                 'index.jinja2',
                 result=result,
@@ -112,15 +162,16 @@ def report():
         if is_trusted_user(user):
             publish = True
 
-        ret = misp_api.add_event(
-            domain_names=domain_names,
-            info='From flask_rpz_lookup',
-            tags=tags,
-            comment=f'Reported by {user}',
-            to_ids=True,
-            reference=reference_in,
-            published=publish,
-        )
+        with misp_api_for(user) as api:
+            ret = api.add_event(
+                domain_names=domain_names,
+                info='From flask_rpz_lookup',
+                tags=tags,
+                comment=f'Reported by {user}',
+                to_ids=True,
+                reference=reference_in,
+                published=publish,
+            )
         current_app.logger.debug(ret)
         result = 'success'
         return render_template('report.jinja2', result=result, domain_names=domain_names, user=user)

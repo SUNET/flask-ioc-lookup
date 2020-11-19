@@ -1,0 +1,4 @@
+---
+org_domains:
+  # Organization domain name (eppn scope): api key
+  "example.com": "secret"

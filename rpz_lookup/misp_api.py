@@ -12,9 +12,9 @@ logger = logging.getLogger(__name__)
 __author__ = 'lundberg'
 
 
-class MISPApi(object):
-    def __init__(self, config: dict):
-        self.pymisp = ExpandedPyMISP(config['MISP_URL'], config['MISP_KEY'], config['MISP_VERIFYCERT'])
+class MISPApi:
+    def __init__(self, api_url: str, api_key: str, verify_cert: bool = True):
+        self.pymisp = ExpandedPyMISP(api_url, api_key, verify_cert)
 
     def search(self, controller='attributes', **kwargs):
         return self.pymisp.search(controller, **kwargs)

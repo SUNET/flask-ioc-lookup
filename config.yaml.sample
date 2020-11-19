@@ -6,4 +6,5 @@ STATIC_FILES: 'static/'
 # ex '1/second;10/hour;100/day;2000 per year'
 REQUEST_RATE_LIMIT: '1/second'
 TRUSTED_USERS: '/path/to/trusted_users.yaml'
+TRUSTED_ORGS: '/path/to/trusted_orgs.yaml'
 LOG_LEVEL: INFO
