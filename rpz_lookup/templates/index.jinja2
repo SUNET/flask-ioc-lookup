@@ -30,7 +30,7 @@
                 {% for item in result %}
                     <pre><a href="{{ misp_url }}events/view/{{ item.event_id }}">MISP event {{ item.event_id }}</a> | {{ item.timestamp|ts }} | {{ item.value }} | {{ item.comment }} | Sightings: {{ item.positives }} | False-positives: {{ item.negatives }}</pre>
                     {% if loop.last %}
-                        <pre>Note: Event links requires access the MISP system.</pre>
+                        <pre>Note: Event links requires access to MISP.</pre>
                     {% endif %}
                 {% else %}
                     <pre>No data</pre>
