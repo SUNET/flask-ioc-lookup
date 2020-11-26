@@ -28,7 +28,10 @@
         <div class="card bg-light">
             <div class="card-body">
                 {% for item in result %}
-                    <pre>EventID {{ item.event_id }} | {{ item.timestamp|ts }} | {{ item.value }} | {{ item.comment }}</pre>
+                    <pre><a href="{{ misp_url }}events/view/{{ item.event_id }}">MISP event {{ item.event_id }}</a> | {{ item.timestamp|ts }} | {{ item.value }} | {{ item.comment }} | Sightings: {{ item.positives }} | False-positives: {{ item.negatives }}</pre>
+                    {% if loop.last %}
+                        <pre>Note: Event links requires access the MISP system.</pre>
+                    {% endif %}
                 {% else %}
                     <pre>No data</pre>
                 {% endfor %}

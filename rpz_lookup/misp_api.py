@@ -5,7 +5,7 @@ import logging
 from typing import Any, List, Optional
 
 from pymisp import ExpandedPyMISP
-from pymisp.mispevent import MISPAttribute, MISPEvent
+from pymisp.mispevent import MISPAttribute, MISPEvent, MISPSighting
 
 logger = logging.getLogger(__name__)
 
@@ -19,12 +19,19 @@ class MISPApi:
     def search(self, controller='attributes', **kwargs):
         return self.pymisp.search(controller, **kwargs)
 
+    def search_sightings(self, attribute_id, context='attribute'):
+        return self.pymisp.search_sightings(context=context, context_id=attribute_id)
+
     def org_name_id_mapping(self):
         pass
 
     def domain_name_lookup(self, domain_name: str) -> List[Any]:
         result = self.search(type='domain', value=domain_name)
         return result.get('Attribute', [])
+
+    def domain_sighting_lookup(self, attribute_id: str) -> List[Any]:
+        result = self.search_sightings(attribute_id)
+        return [item['Sighting'] for item in result]
 
     def add_event(
         self,

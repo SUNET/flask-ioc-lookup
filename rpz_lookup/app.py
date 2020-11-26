@@ -6,14 +6,14 @@ from datetime import datetime
 from os import environ
 
 import yaml
-from flask import Flask, current_app, render_template, request, abort
+from flask import Flask, current_app, render_template, request, abort, jsonify
 from flask_limiter import Limiter
 from pymisp import PyMISPError
 from validators import domain
 from whitenoise import WhiteNoise
 
 from rpz_lookup.misp_api import MISPApi
-from rpz_lookup.utils import get_ipaddr_or_eppn, is_trusted_user
+from rpz_lookup.utils import get_ipaddr_or_eppn, is_trusted_user, get_org_domain
 
 # Read config
 config_path = environ.get('RPZ_LOOKUP_CONFIG', 'config.yaml')
@@ -66,8 +66,8 @@ misp_apis = {'default': MISPApi(app.config['MISP_URL'], app.config['MISP_KEY'], 
 
 
 @contextmanager
-def misp_api_for(user: str):
-    org_domain = user.split('@')[-1].lower()
+def misp_api_for(user: str) -> MISPApi:
+    org_domain = get_org_domain(user)
     app.logger.debug(f'User {user} mapped to domain {org_domain}')
 
     # Lazy load apis per org
@@ -120,6 +120,15 @@ def index():
         if original_domain_name and domain(original_domain_name):
             with misp_api_for('default') as api:
                 result = api.domain_name_lookup(original_domain_name)
+                for item in result:
+                    item['positives'] = 0
+                    item['negatives'] = 0
+                    for sighting in api.domain_sighting_lookup(item['id']):
+                        if sighting['type'] == '0':
+                            item['positives'] += 1
+                        elif sighting['type'] == '1':
+                            item['negatives'] += 1
+
             if not result:
                 # Try searching for a less exact domain name
                 parent_domain_name = '.'.join(original_domain_name.split('.')[1:])
@@ -131,6 +140,7 @@ def index():
                 result=result,
                 original_domain_name=original_domain_name,
                 parent_domain_name=parent_domain_name,
+                misp_url=current_app.config['MISP_URL'],
                 user=user,
             )
         error = f'Invalid domain name: "{original_domain_name}"'
