@@ -70,3 +70,10 @@ class MISPApi:
         )
         logger.debug(event)
         return self.pymisp.add_event(event)
+
+    def add_sighting(self, domain_name: str, sighting_type: str, source: str):
+        sighting = MISPSighting()
+        sighting['value'] = domain_name
+        sighting['type'] = sighting_type
+        sighting['source'] = source
+        return self.pymisp.add_sighting(sighting)

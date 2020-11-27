@@ -6,14 +6,14 @@ from datetime import datetime
 from os import environ
 
 import yaml
-from flask import Flask, current_app, render_template, request, abort, jsonify
+from flask import Flask, current_app, render_template, request, abort
 from flask_limiter import Limiter
 from pymisp import PyMISPError
 from validators import domain
 from whitenoise import WhiteNoise
 
 from rpz_lookup.misp_api import MISPApi
-from rpz_lookup.utils import get_ipaddr_or_eppn, is_trusted_user, get_org_domain
+from rpz_lookup.utils import get_ipaddr_or_eppn, get_user, User
 
 # Read config
 config_path = environ.get('RPZ_LOOKUP_CONFIG', 'config.yaml')
@@ -60,36 +60,34 @@ if app.config.get('TRUSTED_ORGS'):
         org_domains[key.lower()] = value
     app.trusted_orgs['org_domains'] = org_domains
 
-
 # Init MISP APIs
 misp_apis = {'default': MISPApi(app.config['MISP_URL'], app.config['MISP_KEY'], app.config['MISP_VERIFYCERT'])}
 
 
 @contextmanager
-def misp_api_for(user: str) -> MISPApi:
-    org_domain = get_org_domain(user)
-    app.logger.debug(f'User {user} mapped to domain {org_domain}')
+def misp_api_for(user: User) -> MISPApi:
+    app.logger.debug(f'User {user} mapped to domain {user.org_domain}')
 
     # Lazy load apis per org
-    if org_domain not in misp_apis and org_domain in app.trusted_orgs['org_domains']:
+    if user.org_domain not in misp_apis and user.org_domain in app.trusted_orgs['org_domains']:
         try:
-            misp_apis[org_domain] = MISPApi(
+            misp_apis[user.org_domain] = MISPApi(
                 app.config['MISP_URL'],
-                app.trusted_orgs['org_domains'][org_domain],
+                app.trusted_orgs['org_domains'][user.org_domain],
                 app.config['MISP_VERIFYCERT'],
             )
-            app.logger.info(f'Loaded api for {org_domain}')
+            app.logger.info(f'Loaded api for {user.org_domain}')
         except PyMISPError:
             abort(400, 'Authentication failed. Make sure your organizations api key is up to date.')
         except Exception as ex:
-            app.logger.exception(f'Could not load domain mapping for {org_domain}: {ex}')
+            app.logger.exception(f'Could not load domain mapping for {user.org_domain}: {ex}')
 
-    api = misp_apis.get(org_domain)
+    api = misp_apis.get(user.org_domain)
     if api is None:
         app.logger.debug('Using default api')
         yield misp_apis['default']
     else:
-        app.logger.debug(f'Using {org_domain} api')
+        app.logger.debug(f'Using {user.org_domain} api')
         yield api
 
 
@@ -111,14 +109,17 @@ def _jinja2_filter_ts(ts: str):
 # Views
 @app.route('/', methods=['GET', 'POST'])
 @limiter.limit(rate_limit_from_config)
-def index():
-    user = get_ipaddr_or_eppn()
+def index(domain_name=None):
+    user = get_user()
     error = None
-    if request.method == 'POST':
+    if request.method == 'POST' or domain_name is not None:
         original_domain_name = request.form.get('domain_name')
         parent_domain_name = None
+        if not original_domain_name:
+            original_domain_name = domain_name
+
         if original_domain_name and domain(original_domain_name):
-            with misp_api_for('default') as api:
+            with misp_api_for(user) as api:
                 result = api.domain_name_lookup(original_domain_name)
                 for item in result:
                     item['positives'] = 0
@@ -133,7 +134,7 @@ def index():
                 # Try searching for a less exact domain name
                 parent_domain_name = '.'.join(original_domain_name.split('.')[1:])
                 if parent_domain_name and domain(parent_domain_name):
-                    with misp_api_for('default') as api:
+                    with misp_api_for(user) as api:
                         result = api.domain_name_lookup(parent_domain_name)
             return render_template(
                 'index.jinja2',
@@ -151,7 +152,7 @@ def index():
 @app.route('/report', methods=['GET', 'POST'])
 @limiter.limit(rate_limit_from_config)
 def report():
-    user = get_ipaddr_or_eppn()
+    user = get_user()
     if request.method == 'POST':
         domain_names_in = request.form.get('domain_names', '').split('\n')
         reference_in = ' '.join(request.form.get('reference', '').split())  # Normalise whitespace
@@ -169,7 +170,7 @@ def report():
 
         tags = ['OSINT', 'TLP:GREEN']
         publish = False
-        if is_trusted_user(user):
+        if user.is_trusted_user:
             publish = True
 
         with misp_api_for(user) as api:
@@ -186,6 +187,22 @@ def report():
         result = 'success'
         return render_template('report.jinja2', result=result, domain_names=domain_names, user=user)
     return render_template('report.jinja2', user=user)
+
+
+@app.route('/report-sighting', methods=['GET', 'POST'])
+@limiter.limit(rate_limit_from_config)
+def report_sighting():
+    user = get_user()
+    if request.method == 'POST':
+        domain_name_in = request.form.get('domain_name', '')
+        type_in = request.form.get('type', '')
+        app.logger.debug(f'report-sighting: domain_name {domain_name_in}')
+        app.logger.debug(f'report-sighting: type {type_in}')
+        with misp_api_for(user) as api:
+            api.add_sighting(
+                domain_name=domain_name_in, sighting_type=type_in, source=f'flask-rpz-lookup_{user.org_domain}'
+            )
+            return index(domain_name=domain_name_in)
 
 
 if __name__ == '__main__':

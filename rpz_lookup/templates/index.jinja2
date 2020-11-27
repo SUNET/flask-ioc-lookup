@@ -8,7 +8,7 @@
 <body>
 <div class="container">
     <h3 class="pt-3">RPZ domain lookup</h3>
-    <p class="float-right">Logged in as: {{ user }}</p>
+    <p class="float-right">Logged in as: {{ user.identifier }}</p>
     <form method="post">
       <div class="form-group">
         <label for="inputDomain1">Domain name search</label>
@@ -36,7 +36,31 @@
                     <pre>No data</pre>
                 {% endfor %}
             </div>
-        </div>
+        </div
+        {% if original_domain_name is defined %}>
+
+            <div class="row mt-1">
+                <div class="col">
+                <div class="btn-toolbar" role="toolbar" aria-label="Toolbar with button groups">
+                    <div class="btn-group mr-2" role="group">
+                    <form class="form-inline" action="{{ url_for('report_sighting') }}" method="post">
+                        <input type="hidden" name="domain_name" value="{{ original_domain_name }}" />
+                        <input type="hidden" name="type" value="0" />
+                        <button class="btn btn-success" type="submit" {% if not user.in_trusted_org %}disabled{% endif %}>Sighting</button>
+                    </form>
+                    </div>
+                    <div class="btn-group mr-2" role="group">
+                    <form class="form-inline" action="{{ url_for('report_sighting') }}" method="post">
+                        <input type="hidden" name="domain_name" value="{{ original_domain_name }}" />
+                        <input type="hidden" name="type" value="1" />
+                        <button class="btn btn-danger" type="submit" {% if not user.in_trusted_org %}disabled{% endif %}>False-positive</button>
+                    </form>
+                    </div>
+                </div>
+
+            </div>
+            </div>
+        {% endif %}
         {% if parent_domain_name or not result %}
             <hr>
             <h6>Report domain</h6>
@@ -46,7 +70,7 @@
                 <input type="text" readonly class="form-control" id="inputDomains1" name="domain_names" value="{{ original_domain_name }}">
               </div>
               <div class="form-group mx-sm-3 mb-2">
-                <label for="inputReference1" class="sr-only">Password</label>
+                <label for="inputReference1" class="sr-only">Reference</label>
                 <input type="text" class="form-control" id="inputReference1"
                        name="reference" aria-describedby="referenceHelp" placeholder="Enter reference (Optional)">
               </div>

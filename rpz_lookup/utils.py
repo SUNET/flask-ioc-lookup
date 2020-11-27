@@ -1,8 +1,18 @@
 # -*- coding: utf-8 -*-
 __author__ = 'lundberg'
 
+from dataclasses import dataclass
+
 from flask import current_app, request
 from flask_limiter.util import get_ipaddr
+
+
+@dataclass
+class User:
+    identifier: str
+    is_trusted_user: bool
+    in_trusted_org: bool
+    org_domain: str
 
 
 def get_ipaddr_or_eppn() -> str:
@@ -18,6 +28,16 @@ def get_ipaddr_or_eppn() -> str:
         identifier = get_ipaddr()
         current_app.logger.debug(f'Identifier from get_ipaddr: {identifier}')
     return identifier
+
+
+def get_user() -> User:
+    identifier = get_ipaddr_or_eppn()
+    return User(
+        identifier=identifier,
+        is_trusted_user=is_trusted_user(identifier),
+        in_trusted_org=in_trusted_orgs(identifier),
+        org_domain=get_org_domain(identifier),
+    )
 
 
 def is_trusted_user(userid: str) -> bool:
