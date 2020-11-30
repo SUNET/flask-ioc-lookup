@@ -37,24 +37,27 @@
                 {% endfor %}
             </div>
         </div
-        {% if original_domain_name is defined %}>
-
+        {% if result and not parent_domain_name %}>
             <div class="row mt-1">
                 <div class="col">
                 <div class="btn-toolbar" role="toolbar" aria-label="Toolbar with button groups">
                     <div class="btn-group mr-2" role="group">
-                    <form class="form-inline" action="{{ url_for('report_sighting') }}" method="post">
-                        <input type="hidden" name="domain_name" value="{{ original_domain_name }}" />
-                        <input type="hidden" name="type" value="0" />
-                        <button class="btn btn-success" type="submit" {% if not user.in_trusted_org %}disabled{% endif %}>Sighting</button>
-                    </form>
+                        <form class="form-inline" action="{{ url_for('report_sighting') }}" method="post">
+                            <input type="hidden" name="domain_name" value="{{ original_domain_name }}" />
+                            <input type="hidden" name="type" value="0" />
+                            <span class="d-inline-block" tabindex="0" {% if not user.in_trusted_org %}data-toggle="tooltip" data-placement="bottom" title="Only trusted organizations can vote"{% endif %}>
+                                <button class="btn btn-success" type="submit" {% if not user.in_trusted_org %}disabled{% endif %}>Add sighting</button>
+                            </span>
+                        </form>
                     </div>
                     <div class="btn-group mr-2" role="group">
-                    <form class="form-inline" action="{{ url_for('report_sighting') }}" method="post">
-                        <input type="hidden" name="domain_name" value="{{ original_domain_name }}" />
-                        <input type="hidden" name="type" value="1" />
-                        <button class="btn btn-danger" type="submit" {% if not user.in_trusted_org %}disabled{% endif %}>False-positive</button>
-                    </form>
+                        <form class="form-inline" action="{{ url_for('report_sighting') }}" method="post">
+                            <input type="hidden" name="domain_name" value="{{ original_domain_name }}" />
+                            <input type="hidden" name="type" value="1" />
+                            <span class="d-inline-block" {% if not user.in_trusted_org %}tabindex="0" data-toggle="tooltip" data-placement="bottom" title="Only trusted organizations can vote"{% endif %}>
+                                <button class="btn btn-danger" type="submit" {% if not user.in_trusted_org %}disabled{% endif %}>Mark as false-positive</button>
+                            </span>
+                        </form>
                     </div>
                 </div>
 
