@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+    <link rel="icon" href="{{ url_for('static', filename='img/favicon.ico') }}" type="image/x-icon">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/bootstrap.min.css') }}" integrity="sha384-ggOyR0iXCbMQv3Xipma34MD+dH/1fQ784/j6cY/iJTQUOhcWr7x9JvoRxT2MZw1T">
     <meta charset="UTF-8">
     <title>RPZ domain lookup</title>
@@ -66,7 +67,7 @@
         {% endif %}
         {% if parent_domain_name or not result %}
             <hr>
-            <h6>Report domain</h6>
+            <h6 class="mt-2">Report domain</h6>
             <form class="form-inline" action="{{ url_for('report') }}" method="post">
               <div class="form-group mb-2">
                 <label for="inputDomains1" class="sr-only">Domain</label>
@@ -84,5 +85,7 @@
     <hr>
     <p>If you want to report multiple domains, use the <a href="{{ url_for('report') }}">bulk report form</a>.</p>
 </div>
+<script src="{{ url_for('static', filename='js/jquery-3.5.1.slim.min.js') }}" integrity="sha384-DfXdz2htPH0lsSSs5nCTpuj/zy4C+OGpamoFVy38MVBnE+IbbVYUew+OrCXaRkfj"></script>
+<script src="{{ url_for('static', filename='js/bootstrap.bundle.js') }}" integrity="sha384-szbKYgPl66wivXHlSpJF+CKDAVckMVnlGrP25Sndhe+PwOBcXV9LlFh4MUpRhjIB"></script>
 </body>
 </html>
