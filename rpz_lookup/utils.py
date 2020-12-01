@@ -2,6 +2,8 @@
 __author__ = 'lundberg'
 
 from dataclasses import dataclass
+from datetime import datetime, timedelta
+from typing import Any, Dict, List
 
 from flask import current_app, request
 from flask_limiter.util import get_ipaddr
@@ -13,6 +15,28 @@ class User:
     is_trusted_user: bool
     in_trusted_org: bool
     org_domain: str
+
+
+@dataclass
+class SightingsData:
+    can_add_sighting: bool
+    can_add_false_positive: bool
+
+    @classmethod
+    def from_sightings(cls, data: List[Dict[str, Any]]):
+        can_add_sighting = True
+        can_add_false_positive = True
+        now = datetime.utcnow()
+        for item in data:
+            # Check if a sighting has been reported in the latest 24 hours by this org
+            if can_add_sighting and item.get('type', None) == '0':
+                date_sighting = datetime.utcfromtimestamp(int(item['date_sighting']))
+                if date_sighting > (now - timedelta(hours=24)):
+                    can_add_sighting = False
+            # Check if there has been a false-positive report by this org
+            elif can_add_false_positive and item.get('type', None) == '1':
+                can_add_false_positive = False
+        return cls(can_add_sighting=can_add_sighting, can_add_false_positive=can_add_false_positive)
 
 
 def get_ipaddr_or_eppn() -> str:
@@ -27,7 +51,8 @@ def get_ipaddr_or_eppn() -> str:
         current_app.logger.warning('HTTP_EPPN is missing from request environment')
         identifier = get_ipaddr()
         current_app.logger.debug(f'Identifier from get_ipaddr: {identifier}')
-    return identifier
+    # return identifier
+    return f'{identifier}@BORGORG'
 
 
 def get_user() -> User:
