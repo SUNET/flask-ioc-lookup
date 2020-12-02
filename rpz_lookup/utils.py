@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 __author__ = 'lundberg'
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Any, Dict, List
 
@@ -18,12 +18,19 @@ class User:
 
 
 @dataclass
+class Votes:
+    positives: int = 0
+    negatives: int = 0
+
+
+@dataclass
 class SightingsData:
     can_add_sighting: bool
     can_add_false_positive: bool
+    votes: Dict[str, Votes] = field(default_factory=dict)
 
     @classmethod
-    def from_sightings(cls, data: List[Dict[str, Any]]):
+    def from_sightings(cls, data: List[Dict[str, Any]], votes: Dict[str, Votes]):
         can_add_sighting = True
         can_add_false_positive = True
         now = datetime.utcnow()
@@ -31,12 +38,13 @@ class SightingsData:
             # Check if a sighting has been reported in the latest 24 hours by this org
             if can_add_sighting and item.get('type', None) == '0':
                 date_sighting = datetime.utcfromtimestamp(int(item['date_sighting']))
-                if date_sighting > (now - timedelta(hours=24)):
+                min_vote_hours = current_app.config['SIGHTING_MIN_POSITIVE_VOTE_HOURS']
+                if date_sighting > (now - timedelta(hours=min_vote_hours)):
                     can_add_sighting = False
             # Check if there has been a false-positive report by this org
             elif can_add_false_positive and item.get('type', None) == '1':
                 can_add_false_positive = False
-        return cls(can_add_sighting=can_add_sighting, can_add_false_positive=can_add_false_positive)
+        return cls(can_add_sighting=can_add_sighting, can_add_false_positive=can_add_false_positive, votes=votes)
 
 
 def get_ipaddr_or_eppn() -> str:

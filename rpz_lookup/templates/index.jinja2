@@ -30,7 +30,8 @@
         <div class="card bg-light">
             <div class="card-body">
                 {% for item in result %}
-                    <pre><a href="{{ misp_url }}events/view/{{ item.event_id }}">MISP event {{ item.event_id }}</a> | {{ item.timestamp|ts }} | {{ item.value }} | {{ item.comment }} | Sightings: <span class="badge badge-pill badge-success">{{ item.positives }}</span> | False-positives: <span class="badge badge-pill badge-danger">{{ item.negatives }}</span></pre>
+                    {% set votes = sightings_data.votes.get(item.id) %}
+                    <pre><a href="{{ misp_url }}events/view/{{ item.event_id }}">MISP event {{ item.event_id }}</a> | {{ item.timestamp|ts }} | {{ item.value }} | {{ item.comment }} | Sightings: <span class="badge badge-pill badge-success">{{ votes.positives }}</span> | False-positives: <span class="badge badge-pill badge-danger">{{ votes.negatives }}</span></pre>
                     {% if loop.last %}
                         <pre>Note: Event links requires access to MISP.</pre>
                     {% endif %}
@@ -43,7 +44,7 @@
             <div class="row mt-1">
                 <div class="col">
                     <div class="btn-toolbar" role="toolbar" aria-label="Toolbar with button groups">
-                        {% if org_sightings_data.can_add_sighting %}
+                        {% if sightings_data.can_add_sighting %}
                             <div class="btn-group mr-2" role="group">
                                 <form class="form-inline" action="{{ url_for('report_sighting') }}" method="post">
                                     <input type="hidden" name="domain_name" value="{{ original_domain_name }}" />
@@ -64,7 +65,7 @@
                                 </form>
                             </div>
                         {% endif %}
-                        {% if org_sightings_data.can_add_false_positive %}
+                        {% if sightings_data.can_add_false_positive %}
                             <div class="btn-group mr-2" role="group">
                                 <form class="form-inline" action="{{ url_for('report_sighting') }}" method="post">
                                     <input type="hidden" name="domain_name" value="{{ original_domain_name }}" />

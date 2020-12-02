@@ -2,19 +2,19 @@
 
 import sys
 from contextlib import contextmanager
-from datetime import datetime
+from datetime import datetime, timedelta
 from os import environ
-from typing import Optional
+from typing import Any, Dict, List, Optional
 
 import yaml
-from flask import Flask, abort, current_app, jsonify, redirect, render_template, request, url_for
+from flask import Flask, Response, abort, current_app, make_response, redirect, render_template, request, url_for
 from flask_limiter import Limiter
 from pymisp import PyMISPError
 from validators import domain
 from whitenoise import WhiteNoise
 
 from rpz_lookup.misp_api import MISPApi
-from rpz_lookup.utils import SightingsData, User, get_ipaddr_or_eppn, get_user
+from rpz_lookup.utils import SightingsData, User, Votes, get_ipaddr_or_eppn, get_user
 
 # Read config
 config_path = environ.get('RPZ_LOOKUP_CONFIG', 'config.yaml')
@@ -64,6 +64,7 @@ if app.config.get('TRUSTED_ORGS'):
 
 # Init other settings
 app.config.setdefault('SIGHTING_SOURCE_PREFIX', 'flask-rpz-lookup_')
+app.config.setdefault('SIGHTING_MIN_POSITIVE_VOTE_HOURS', 24)
 
 
 # Init MISP APIs
@@ -116,6 +117,28 @@ def _jinja2_filter_ts(ts: str):
     return dt.strftime(fmt)
 
 
+def get_sightings_data(user: User, search_result: List[Dict[str, Any]]):
+    attribute_votes = {}
+    org_sightings = []
+    with misp_api_for() as api:
+        for item in search_result:
+            votes = Votes()
+            for sighting in api.domain_sighting_lookup(attribute_id=item['id']):
+                if sighting['type'] == '0':
+                    votes.positives += 1
+                elif sighting['type'] == '1':
+                    votes.negatives += 1
+            attribute_votes[item['id']] = votes
+            with misp_api_for(user) as org_api:
+                org_sightings.extend(
+                    org_api.domain_sighting_lookup(
+                        attribute_id=item['id'],
+                        source=f'{app.config["SIGHTING_SOURCE_PREFIX"]}{user.org_domain}',
+                    )
+                )
+    return SightingsData.from_sightings(data=org_sightings, votes=attribute_votes)
+
+
 # Views
 @app.route('/', defaults={'domain_name': None}, methods=['GET', 'POST'])
 @app.route('/<domain_name>', methods=['GET', 'POST'])
@@ -132,23 +155,6 @@ def index(domain_name=None):
         if original_domain_name and domain(original_domain_name):
             with misp_api_for() as api:  # Use the default api to get non org specific data
                 result = api.domain_name_lookup(original_domain_name)
-                org_sightings = []
-                for item in result:
-                    item['positives'] = 0
-                    item['negatives'] = 0
-                    for sighting in api.domain_sighting_lookup(attribute_id=item['id']):
-                        if sighting['type'] == '0':
-                            item['positives'] += 1
-                        elif sighting['type'] == '1':
-                            item['negatives'] += 1
-                    with misp_api_for(user) as org_api:
-                        org_sightings.extend(
-                            org_api.domain_sighting_lookup(
-                                attribute_id=item['id'],
-                                source=f'{app.config["SIGHTING_SOURCE_PREFIX"]}{user.org_domain}',
-                            )
-                        )
-                org_sightings_data = SightingsData.from_sightings(org_sightings)
 
             if not result:
                 # Try searching for a less exact domain name
@@ -156,15 +162,18 @@ def index(domain_name=None):
                 if parent_domain_name and domain(parent_domain_name):
                     with misp_api_for() as api:  # Use the default api to get non org specific data
                         result = api.domain_name_lookup(parent_domain_name)
+
+            sightings_data = get_sightings_data(user=user, search_result=result)
             return render_template(
                 'index.jinja2',
                 result=result,
                 original_domain_name=original_domain_name,
                 parent_domain_name=parent_domain_name,
                 misp_url=current_app.config['MISP_URL'],
-                org_sightings_data=org_sightings_data,
+                sightings_data=sightings_data,
                 user=user,
             )
+
         error = f'Invalid domain name: "{original_domain_name}"'
 
     return render_template('index.jinja2', error=error, user=user)
@@ -214,18 +223,29 @@ def report():
 @limiter.limit(rate_limit_from_config)
 def report_sighting():
     user = get_user()
+
+    domain_name_in = request.form.get('domain_name', '')
+    type_in = request.form.get('type', '')
+    if not domain(domain_name_in) or not type_in:
+        abort(400)
+
     if user.in_trusted_org:
-        domain_name_in = request.form.get('domain_name', '')
-        type_in = request.form.get('type', '')
-        app.logger.debug(f'report-sighting: domain_name {domain_name_in}')
-        app.logger.debug(f'report-sighting: type {type_in}')
-        with misp_api_for(user) as api:
-            api.add_sighting(
-                domain_name=domain_name_in,
-                sighting_type=type_in,
-                source=f'{app.config["SIGHTING_SOURCE_PREFIX"]}{user.org_domain}',
-            )
-        return redirect(url_for('index', domain_name=domain_name_in))
+        with misp_api_for() as api:
+            result = api.domain_name_lookup(domain_name_in)
+        sightings_data = get_sightings_data(user=user, search_result=result)
+
+        if (sightings_data.can_add_sighting and type_in == '0') or (
+            sightings_data.can_add_false_positive and type_in == '1'
+        ):
+            app.logger.debug(f'report-sighting: domain_name {domain_name_in}')
+            app.logger.debug(f'report-sighting: type {type_in}')
+            with misp_api_for(user) as api:
+                api.add_sighting(
+                    domain_name=domain_name_in,
+                    sighting_type=type_in,
+                    source=f'{app.config["SIGHTING_SOURCE_PREFIX"]}{user.org_domain}',
+                )
+            return redirect(url_for('index', domain_name=domain_name_in))
     return abort(401)
 
 
@@ -233,15 +253,35 @@ def report_sighting():
 @limiter.limit(rate_limit_from_config)
 def remove_sighting():
     user = get_user()
+
+    domain_name_in = request.form.get('domain_name', '')
+    type_in = request.form.get('type', '')
+    if not domain(domain_name_in) or not type_in:
+        abort(400)
+
     if user.in_trusted_org:
         domain_name_in = request.form.get('domain_name', '')
         type_in = request.form.get('type', '')
+        date_from = None
+        date_to = None
+
+        if type_in == '0':
+            # Only remove sightings added in the last X hours
+            min_vote_hours = current_app.config['SIGHTING_MIN_POSITIVE_VOTE_HOURS']
+            date_to = datetime.utcnow()
+            date_from = date_to - timedelta(hours=min_vote_hours)
+
         app.logger.debug(f'remove-sighting: domain_name {domain_name_in}')
         app.logger.debug(f'remove-sighting: type {type_in}')
+        app.logger.debug(f'remove-sighting: date_from {date_from}')
+        app.logger.debug(f'remove-sighting: date_to {date_to}')
+
         with misp_api_for(user) as api:
             api.remove_sighting(
                 domain_name=domain_name_in,
                 sighting_type=type_in,
+                date_from=date_from,
+                date_to=date_to,
                 source=f'{app.config["SIGHTING_SOURCE_PREFIX"]}{user.org_domain}',
             )
         return redirect(url_for('index', domain_name=domain_name_in))
