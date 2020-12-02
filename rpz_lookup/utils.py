@@ -59,8 +59,7 @@ def get_ipaddr_or_eppn() -> str:
         current_app.logger.warning('HTTP_EPPN is missing from request environment')
         identifier = get_ipaddr()
         current_app.logger.debug(f'Identifier from get_ipaddr: {identifier}')
-    # return identifier
-    return f'{identifier}@BORGORG'
+    return identifier
 
 
 def get_user() -> User:
