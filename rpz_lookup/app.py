@@ -1,20 +1,17 @@
 # -*- coding: utf-8 -*-
 
 import sys
-from contextlib import contextmanager
 from datetime import datetime, timedelta
 from os import environ
-from typing import Any, Dict, List, Optional
 
 import yaml
-from flask import Flask, Response, abort, current_app, make_response, redirect, render_template, request, url_for
+from flask import Flask, abort, current_app, redirect, render_template, request, url_for
 from flask_limiter import Limiter
-from pymisp import PyMISPError
 from validators import domain
 from whitenoise import WhiteNoise
 
 from rpz_lookup.misp_api import MISPApi
-from rpz_lookup.utils import SightingsData, User, Votes, get_ipaddr_or_eppn, get_user
+from rpz_lookup.utils import get_ipaddr_or_eppn, get_user, misp_api_for, get_sightings_data
 
 # Read config
 config_path = environ.get('RPZ_LOOKUP_CONFIG', 'config.yaml')
@@ -68,38 +65,7 @@ app.config.setdefault('SIGHTING_MIN_POSITIVE_VOTE_HOURS', 24)
 
 
 # Init MISP APIs
-misp_apis = {'default': MISPApi(app.config['MISP_URL'], app.config['MISP_KEY'], app.config['MISP_VERIFYCERT'])}
-
-
-@contextmanager
-def misp_api_for(user: Optional[User] = None) -> MISPApi:
-    if user is None:
-        # Use default api key as org specific api keys return org specific data
-        user = User(identifier='default', is_trusted_user=False, in_trusted_org=False, org_domain='default')
-        app.logger.debug('Default user used for api call')
-    app.logger.debug(f'User {user.identifier} mapped to domain {user.org_domain}')
-
-    # Lazy load apis per org
-    if user.org_domain not in misp_apis and user.org_domain in app.trusted_orgs['org_domains']:
-        try:
-            misp_apis[user.org_domain] = MISPApi(
-                app.config['MISP_URL'],
-                app.trusted_orgs['org_domains'][user.org_domain],
-                app.config['MISP_VERIFYCERT'],
-            )
-            app.logger.info(f'Loaded api for {user.org_domain}')
-        except PyMISPError:
-            abort(400, 'Authentication failed. Make sure your organizations api key is up to date.')
-        except Exception as ex:
-            app.logger.exception(f'Could not load domain mapping for {user.org_domain}: {ex}')
-
-    api = misp_apis.get(user.org_domain)
-    if api is None:
-        app.logger.debug('Using default api')
-        yield misp_apis['default']
-    else:
-        app.logger.debug(f'Using {user.org_domain} api')
-        yield api
+app.misp_apis = {'default': MISPApi(app.config['MISP_URL'], app.config['MISP_KEY'], app.config['MISP_VERIFYCERT'])}
 
 
 # Init rate limiting
@@ -115,28 +81,6 @@ def _jinja2_filter_ts(ts: str):
     dt = datetime.utcfromtimestamp(int(ts))
     fmt = '%Y-%m-%d %H:%M:%S'
     return dt.strftime(fmt)
-
-
-def get_sightings_data(user: User, search_result: List[Dict[str, Any]]):
-    attribute_votes = {}
-    org_sightings = []
-    with misp_api_for() as api:
-        for item in search_result:
-            votes = Votes()
-            for sighting in api.domain_sighting_lookup(attribute_id=item['id']):
-                if sighting['type'] == '0':
-                    votes.positives += 1
-                elif sighting['type'] == '1':
-                    votes.negatives += 1
-            attribute_votes[item['id']] = votes
-            with misp_api_for(user) as org_api:
-                org_sightings.extend(
-                    org_api.domain_sighting_lookup(
-                        attribute_id=item['id'],
-                        source=f'{app.config["SIGHTING_SOURCE_PREFIX"]}{user.org_domain}',
-                    )
-                )
-    return SightingsData.from_sightings(data=org_sightings, votes=attribute_votes)
 
 
 # Views

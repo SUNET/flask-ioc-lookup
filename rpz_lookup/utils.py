@@ -1,12 +1,16 @@
 # -*- coding: utf-8 -*-
 __author__ = 'lundberg'
 
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional, Set
 
-from flask import current_app, request
+from flask import current_app, request, abort
 from flask_limiter.util import get_ipaddr
+from pymisp import PyMISPError
+
+from rpz_lookup.misp_api import MISPApi
 
 
 @dataclass
@@ -90,3 +94,56 @@ def get_org_domain(userid: str) -> str:
 def in_trusted_orgs(userid: str) -> bool:
     org_domain = get_org_domain(userid)
     return org_domain in current_app.trusted_orgs['org_domains']
+
+
+def get_sightings_data(user: User, search_result: List[Dict[str, Any]]):
+    attribute_votes = {}
+    org_sightings = []
+    with misp_api_for() as api:
+        for item in search_result:
+            votes = Votes()
+            for sighting in api.domain_sighting_lookup(attribute_id=item['id']):
+                if sighting['type'] == '0':
+                    votes.positives += 1
+                elif sighting['type'] == '1':
+                    votes.negatives += 1
+            attribute_votes[item['id']] = votes
+            with misp_api_for(user) as org_api:
+                org_sightings.extend(
+                    org_api.domain_sighting_lookup(
+                        attribute_id=item['id'],
+                        source=f'{current_app.config["SIGHTING_SOURCE_PREFIX"]}{user.org_domain}',
+                    )
+                )
+    return SightingsData.from_sightings(data=org_sightings, votes=attribute_votes)
+
+
+@contextmanager
+def misp_api_for(user: Optional[User] = None) -> MISPApi:
+    if user is None:
+        # Use default api key as org specific api keys return org specific data
+        user = User(identifier='default', is_trusted_user=False, in_trusted_org=False, org_domain='default')
+        current_app.logger.debug('Default user used for api call')
+    current_app.logger.debug(f'User {user.identifier} mapped to domain {user.org_domain}')
+
+    # Lazy load apis per org
+    if user.org_domain not in current_app.misp_apis and user.org_domain in current_app.trusted_orgs['org_domains']:
+        try:
+            current_app.misp_apis[user.org_domain] = MISPApi(
+                current_app.config['MISP_URL'],
+                current_app.trusted_orgs['org_domains'][user.org_domain],
+                current_app.config['MISP_VERIFYCERT'],
+            )
+            current_app.logger.info(f'Loaded api for {user.org_domain}')
+        except PyMISPError:
+            abort(400, 'Authentication failed. Make sure your organizations api key is up to date.')
+        except Exception as ex:
+            current_app.logger.exception(f'Could not load domain mapping for {user.org_domain}: {ex}')
+
+    api = current_app.misp_apis.get(user.org_domain)
+    if api is None:
+        current_app.logger.debug('Using default api')
+        yield current_app.misp_apis['default']
+    else:
+        current_app.logger.debug(f'Using {user.org_domain} api')
+        yield api
