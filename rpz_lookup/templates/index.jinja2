@@ -31,7 +31,23 @@
             <div class="card-body">
                 {% for item in result %}
                     {% set votes = sightings_data.votes.get(item.id) %}
-                    <pre><a href="{{ misp_url }}events/view/{{ item.event_id }}">MISP event {{ item.event_id }}</a> | {{ item.timestamp|ts }} | {{ item.value }} | {{ item.comment }} | Sightings: <span class="badge badge-pill badge-success">{{ votes.positives }}</span> | False-positives: <span class="badge badge-pill badge-danger">{{ votes.negatives }}</span></pre>
+                    <pre><a href="{{ misp_url }}events/view/{{ item.event_id }}">MISP event {{ item.event_id }}</a> | {{ item.timestamp|ts }} | {{ item.value }} | {{ item.comment }} | Sightings: <a data-toggle="collapse" href="#orgSightingPositiveCollapse{{ loop.index0 }}" role="button" aria-expanded="false" aria-controls="orgSightingPositiveCollapse{{ loop.index0 }}"><span class="badge badge-pill badge-success">{{ votes.positives }}</span></a> | False-positives: <a data-toggle="collapse" href="#orgSightingNegativeCollapse{{ loop.index0 }}" role="button" aria-expanded="false" aria-controls="orgSightingNegativeCollapse{{ loop.index0 }}"><span class="badge badge-pill badge-danger">{{ votes.negatives }}</span></a></pre>
+                    <div class="row">
+                        <div class="col">
+                            <div class="collapse multi-collapse mb-3" id="orgSightingPositiveCollapse{{ loop.index0 }}">
+                            {% for org in votes.positive_orgs %}
+                                <span class="badge badge-pill badge-success">{{ org }}</span>
+                            {% endfor %}
+                            </div>
+                        </div>
+                        <div class="col">
+                            <div class="collapse multi-collapse mb-3" id="orgSightingNegativeCollapse{{ loop.index0 }}">
+                                {% for org in votes.negative_orgs %}
+                                    <span class="badge badge-pill badge-danger">{{ org }}</span>
+                                {% endfor %}
+                            </div>
+                        </div>
+                    </div>
                     {% if loop.last %}
                         <pre>Note: Event links requires access to MISP.</pre>
                     {% endif %}

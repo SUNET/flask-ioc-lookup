@@ -24,7 +24,9 @@ class User:
 @dataclass
 class Votes:
     positives: int = 0
+    positive_orgs: Set[str] = field(default_factory=set)
     negatives: int = 0
+    negative_orgs: Set[str] = field(default_factory=set)
 
 
 @dataclass
@@ -103,10 +105,13 @@ def get_sightings_data(user: User, search_result: List[Dict[str, Any]]):
         for item in search_result:
             votes = Votes()
             for sighting in api.domain_sighting_lookup(attribute_id=item['id']):
+                org_name = sighting['source'].replace(current_app.config["SIGHTING_SOURCE_PREFIX"], '')
                 if sighting['type'] == '0':
                     votes.positives += 1
+                    votes.positive_orgs.add(org_name)
                 elif sighting['type'] == '1':
                     votes.negatives += 1
+                    votes.negative_orgs.add(org_name)
             attribute_votes[item['id']] = votes
             with misp_api_for(user) as org_api:
                 org_sightings.extend(
