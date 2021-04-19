@@ -1,2 +1,2 @@
-# flask-rpz-lookup
-RPZ lookup tool
+# flask-ioc-lookup
+IOC lookup tool

@@ -5,7 +5,7 @@ import sys
 
 import yaml
 
-from rpz_lookup.misp_api import MISPApi
+from ioc_lookup.misp_api import MISPApi
 
 __author__ = 'lundberg'
 

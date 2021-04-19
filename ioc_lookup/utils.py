@@ -10,7 +10,7 @@ from flask import current_app, request, abort
 from flask_limiter.util import get_ipaddr
 from pymisp import PyMISPError
 
-from rpz_lookup.misp_api import MISPApi
+from ioc_lookup.misp_api import MISPApi
 
 
 @dataclass

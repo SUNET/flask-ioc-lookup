@@ -10,16 +10,16 @@ from flask_limiter import Limiter
 from validators import domain
 from whitenoise import WhiteNoise
 
-from rpz_lookup.misp_api import MISPApi
-from rpz_lookup.utils import get_ipaddr_or_eppn, get_user, misp_api_for, get_sightings_data
+from ioc_lookup.misp_api import MISPApi
+from ioc_lookup.utils import get_ipaddr_or_eppn, get_user, misp_api_for, get_sightings_data
 
 # Read config
-config_path = environ.get('RPZ_LOOKUP_CONFIG', 'config.yaml')
+config_path = environ.get('IOC_LOOKUP_CONFIG', 'config.yaml')
 try:
     with open(config_path) as f:
         config = yaml.safe_load(f)
 except FileNotFoundError as e:
-    print('Set environment variable RPZ_LOOKUP_CONFIG to config file path')
+    print('Set environment variable IOC_LOOKUP_CONFIG to config file path')
     print(e)
     sys.exit(1)
 
@@ -30,7 +30,7 @@ app.config.from_mapping(config)
 app.config.setdefault('LOG_LEVEL', 'INFO')
 app.logger.setLevel(app.config['LOG_LEVEL'])
 # Init static files
-app.wsgi_app = WhiteNoise(app.wsgi_app, root=config.get('STATIC_FILES', 'rpz_lookup/static/'))
+app.wsgi_app = WhiteNoise(app.wsgi_app, root=config.get('STATIC_FILES', 'ioc_lookup/static/'))
 # Init trusted user list
 app.trusted_users = []
 if app.config.get('TRUSTED_USERS'):
@@ -60,7 +60,7 @@ if app.config.get('TRUSTED_ORGS'):
     app.trusted_orgs['org_domains'] = org_domains
 
 # Init other settings
-app.config.setdefault('SIGHTING_SOURCE_PREFIX', 'flask-rpz-lookup_')
+app.config.setdefault('SIGHTING_SOURCE_PREFIX', 'flask-ioc-lookup_')
 app.config.setdefault('SIGHTING_MIN_POSITIVE_VOTE_HOURS', 24)
 
 
@@ -150,7 +150,7 @@ def report():
         with misp_api_for(user) as api:
             ret = api.add_event(
                 domain_names=domain_names,
-                info='From flask_rpz_lookup',
+                info='From flask_ioc_lookup',
                 tags=tags,
                 comment=f'Reported by {user.identifier}',
                 to_ids=True,

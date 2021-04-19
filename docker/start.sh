@@ -3,9 +3,9 @@
 set -e
 set -x
 
-. /opt/flask-rpz-lookup/env/bin/activate
+. /opt/flask-ioc-lookup/env/bin/activate
 
-project_dir=${project_dir-"/opt/flask-rpz-lookup/"}
+project_dir=${project_dir-"/opt/flask-ioc-lookup/"}
 # gunicorn settings
 workers=${workers-1}
 worker_class=${worker_class-sync}
@@ -19,16 +19,16 @@ export PYTHONPATH=${PYTHONPATH-${project_dir}}
 
 # nice to have in docker run output, to check what
 # version of something is actually running.
-/opt/flask-rpz-lookup/env/bin/pip freeze
+/opt/flask-ioc-lookup/env/bin/pip freeze
 
 echo ""
-echo "$0: Starting rpz_lookup"
+echo "$0: Starting ioc_lookup"
 
-exec start-stop-daemon --start -c rpz:rpz --exec \
-     /opt/flask-rpz-lookup/env/bin/gunicorn \
-     --user=rpz --group=rpz -- \
+exec start-stop-daemon --start -c ioc:ioc --exec \
+     /opt/flask-ioc-lookup/env/bin/gunicorn \
+     --user=ioc --group=ioc -- \
      --bind 0.0.0.0:5000 \
      --workers ${workers} --worker-class ${worker_class} \
      --threads ${worker_threads} --timeout ${worker_timeout} \
      --forwarded-allow-ips="${forwarded_allow_ips}" \
-     rpz_lookup.app:app
+     ioc_lookup.app:app

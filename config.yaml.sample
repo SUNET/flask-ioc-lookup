@@ -1,3 +1,4 @@
+
 MISP_URL: 'https://misp-instance/'
 MISP_KEY: 'secret'
 MISP_VERIFYCERT: true
