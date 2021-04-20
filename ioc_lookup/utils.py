@@ -1,16 +1,22 @@
 # -*- coding: utf-8 -*-
 __author__ = 'lundberg'
 
+import urllib.parse
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Set
 
-from flask import current_app, request, abort
+from flask import abort, current_app, request
 from flask_limiter.util import get_ipaddr
 from pymisp import PyMISPError
+from validators import domain, url
 
-from ioc_lookup.misp_api import MISPApi
+from ioc_lookup.misp_api import Attr, AttrType, MISPApi
+
+
+class ParseException(Exception):
+    pass
 
 
 @dataclass
@@ -53,6 +59,28 @@ class SightingsData:
         return cls(can_add_sighting=can_add_sighting, can_add_false_positive=can_add_false_positive, votes=votes)
 
 
+def parse_items(items: str) -> List[Attr]:
+    parsed_items = []
+    for item in items.split('\n'):
+        if item:
+            item = ''.join(item.split())  # Normalize whitespace
+            item = urllib.parse.unquote_plus(item)
+            if domain(item):
+                parsed_items.append(Attr(name=item, type=AttrType.DOMAIN))
+            elif url(item):
+                parsed_items.append(Attr(name=item, type=AttrType.URL))
+            else:
+                raise ParseException(f'Could not parse {item}')
+    return parsed_items
+
+
+def parse_item(item: str) -> Optional[Attr]:
+    items = parse_items(item)
+    if not items:
+        return None
+    return items[0]
+
+
 def get_ipaddr_or_eppn() -> str:
     """
     Uses eppn if supplied else remote address for rate limiting
@@ -90,7 +118,8 @@ def is_trusted_user(userid: str) -> bool:
 
 
 def get_org_domain(userid: str) -> str:
-    return userid.split('@')[-1].lower()
+    return 'borgorg'
+    # return userid.split('@')[-1].lower()
 
 
 def in_trusted_orgs(userid: str) -> bool:

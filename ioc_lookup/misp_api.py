@@ -1,7 +1,9 @@
 # -*- coding: utf-8 -*-
 
 import logging
+from dataclasses import dataclass
 from datetime import date, datetime
+from enum import Enum
 from typing import Any, List, Optional
 
 from pymisp import ExpandedPyMISP
@@ -10,6 +12,17 @@ from pymisp.mispevent import MISPAttribute, MISPEvent, MISPSighting
 logger = logging.getLogger(__name__)
 
 __author__ = 'lundberg'
+
+
+class AttrType(Enum):
+    DOMAIN = 'domain'
+    URL = 'url'
+
+
+@dataclass
+class Attr:
+    name: str
+    type: AttrType
 
 
 class MISPApi:
@@ -25,8 +38,20 @@ class MISPApi:
     def org_name_id_mapping(self):
         pass
 
+    def attr_lookup(self, attr: Attr) -> List[Any]:
+        if attr.type is AttrType.DOMAIN:
+            return self.domain_name_lookup(domain_name=attr.name)
+        elif attr.type is AttrType.URL:
+            return self.url_lookup(url=attr.name)
+        else:
+            raise NotImplementedError(f'Lookup for typ {attr.type} not implemented.')
+
     def domain_name_lookup(self, domain_name: str) -> List[Any]:
         result = self.search(type='domain', value=domain_name)
+        return result.get('Attribute', [])
+
+    def url_lookup(self, url: str) -> List[Any]:
+        result = self.search(type='url', value=url)
         return result.get('Attribute', [])
 
     def domain_sighting_lookup(self, attribute_id: str, source: Optional[str] = None) -> List[Any]:
@@ -35,7 +60,7 @@ class MISPApi:
 
     def add_event(
         self,
-        domain_names: list,
+        attr_items: List[Attr],
         info: str,
         tags: List,
         comment: str,
@@ -45,12 +70,17 @@ class MISPApi:
         published: Optional[bool] = False,
     ):
         attrs = []
-        for name in domain_names:
-            domain_attr = MISPAttribute()
-            domain_attr.from_dict(
-                type='domain', category='Network activity', to_ids=to_ids, value=name, comment=comment, timestamp=ts
+        for item in attr_items:
+            report_attr = MISPAttribute()
+            report_attr.from_dict(
+                type=item.type.value,
+                category='Network activity',
+                to_ids=to_ids,
+                value=item.name,
+                comment=comment,
+                timestamp=ts,
             )
-            attrs.append(domain_attr)
+            attrs.append(report_attr)
 
         if reference:
             reference_attr = MISPAttribute()
@@ -69,23 +99,23 @@ class MISPApi:
         logger.debug(event)
         return self.pymisp.add_event(event)
 
-    def add_sighting(self, domain_name: str, sighting_type: str, source: str) -> MISPSighting:
+    def add_sighting(self, attr: Attr, sighting_type: str, source: str) -> MISPSighting:
         sighting = MISPSighting()
-        sighting['value'] = domain_name
+        sighting['value'] = attr.name
         sighting['type'] = sighting_type
         sighting['source'] = source
         return self.pymisp.add_sighting(sighting)
 
     def remove_sighting(
         self,
-        domain_name: str,
+        attr: Attr,
         sighting_type: str,
         source: str,
         date_from: Optional[datetime] = None,
         date_to: Optional[datetime] = None,
     ):
         sightings = []
-        for item in self.domain_name_lookup(domain_name=domain_name):
+        for item in self.attr_lookup(attr):
             sightings.extend(
                 self.pymisp.search_sightings(
                     context='attribute',

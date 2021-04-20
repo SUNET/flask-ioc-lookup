@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 
 import sys
+import urllib.parse
 from datetime import datetime, timedelta
 from os import environ
 
@@ -10,8 +11,16 @@ from flask_limiter import Limiter
 from validators import domain
 from whitenoise import WhiteNoise
 
-from ioc_lookup.misp_api import MISPApi
-from ioc_lookup.utils import get_ipaddr_or_eppn, get_user, misp_api_for, get_sightings_data
+from ioc_lookup.misp_api import AttrType, MISPApi
+from ioc_lookup.utils import (
+    ParseException,
+    get_ipaddr_or_eppn,
+    get_sightings_data,
+    get_user,
+    misp_api_for,
+    parse_item,
+    parse_items,
+)
 
 # Read config
 config_path = environ.get('IOC_LOOKUP_CONFIG', 'config.yaml')
@@ -84,41 +93,40 @@ def _jinja2_filter_ts(ts: str):
 
 
 # Views
-@app.route('/', defaults={'domain_name': None}, methods=['GET', 'POST'])
-@app.route('/<domain_name>', methods=['GET', 'POST'])
+@app.route('/', defaults={'search_query': None}, methods=['GET', 'POST'])
+@app.route('/<search_query>', methods=['GET', 'POST'])
 @limiter.limit(rate_limit_from_config)
-def index(domain_name=None):
+def index(search_query=None):
     user = get_user()
     error = None
-    if request.method == 'POST' or domain_name is not None:
-        original_domain_name = request.form.get('domain_name')
+    if request.method == 'POST' or search_query is not None:
+        original_search_query = request.form.get('search_query')
         parent_domain_name = None
-        if not original_domain_name:
-            original_domain_name = domain_name
+        if not original_search_query:
+            original_search_query = search_query
 
-        if original_domain_name and domain(original_domain_name):
+        search_item = parse_item(original_search_query)
+        if search_item:
             with misp_api_for() as api:  # Use the default api to get non org specific data
-                result = api.domain_name_lookup(original_domain_name)
-
-            if not result:
-                # Try searching for a less exact domain name
-                parent_domain_name = '.'.join(original_domain_name.split('.')[1:])
-                if parent_domain_name and domain(parent_domain_name):
-                    with misp_api_for() as api:  # Use the default api to get non org specific data
+                result = api.attr_lookup(search_item)
+                if not result and search_item.type is AttrType.DOMAIN:
+                    # Try searching for a less exact domain name
+                    parent_domain_name = '.'.join(search_item.name.split('.')[1:])
+                    if parent_domain_name and domain(parent_domain_name):
                         result = api.domain_name_lookup(parent_domain_name)
 
             sightings_data = get_sightings_data(user=user, search_result=result)
             return render_template(
                 'index.jinja2',
                 result=result,
-                original_domain_name=original_domain_name,
+                original_search_query=search_item.name,
                 parent_domain_name=parent_domain_name,
                 misp_url=current_app.config['MISP_URL'],
                 sightings_data=sightings_data,
                 user=user,
             )
 
-        error = f'Invalid domain name: "{original_domain_name}"'
+        error = f'Invalid domain name or url: "{original_search_query}"'
 
     return render_template('index.jinja2', error=error, user=user)
 
@@ -128,18 +136,15 @@ def index(domain_name=None):
 def report():
     user = get_user()
     if request.method == 'POST':
-        domain_names_in = request.form.get('domain_names', '').split('\n')
         reference_in = ' '.join(request.form.get('reference', '').split())  # Normalise whitespace
-        domain_names = []
-        for domain_name in domain_names_in:
-            if domain_name:
-                domain_name = ''.join(domain_name.split())  # Normalize whitespace
-                if not domain(domain_name):
-                    return render_template('report.jinja2', error=f'Invalid domain name: "{domain_name}"', user=user)
-                domain_names.append(domain_name)
+        try:
+            report_items = parse_items(request.form.get('report_query', ''))
+        except ParseException as ex:
+            app.logger.error(ex)
+            return render_template('report.jinja2', error=f'Invalid domain name or URL', user=user)
 
-        if not domain_names:
-            error = f'No valid domain name found'
+        if not report_items:
+            error = f'No valid domain name or URL name found'
             return render_template('report.jinja2', error=error, user=user)
 
         tags = ['OSINT', 'TLP:GREEN']
@@ -148,18 +153,20 @@ def report():
             publish = True
 
         with misp_api_for(user) as api:
-            ret = api.add_event(
-                domain_names=domain_names,
-                info='From flask_ioc_lookup',
-                tags=tags,
-                comment=f'Reported by {user.identifier}',
-                to_ids=True,
-                reference=reference_in,
-                published=publish,
-            )
-        current_app.logger.debug(ret)
+            if report_items:
+                ret = api.add_event(
+                    attr_items=report_items,
+                    info='From flask_ioc_lookup',
+                    tags=tags,
+                    comment=f'Reported by {user.identifier}',
+                    to_ids=True,
+                    reference=reference_in,
+                    published=publish,
+                )
+                current_app.logger.debug(f'domain_names ret: {ret}')
+
         result = 'success'
-        return render_template('report.jinja2', result=result, domain_names=domain_names, user=user)
+        return render_template('report.jinja2', result=result, reported_items=report_items, user=user)
     return render_template('report.jinja2', user=user)
 
 
@@ -167,69 +174,68 @@ def report():
 @limiter.limit(rate_limit_from_config)
 def report_sighting():
     user = get_user()
+    if not user.in_trusted_org:
+        return abort(401)
 
-    domain_name_in = request.form.get('domain_name', '')
+    sighting_in = parse_item(request.form.get('search_query', ''))
     type_in = request.form.get('type', '')
-    if not domain(domain_name_in) or not type_in:
+    if not sighting_in or not type_in:
         abort(400)
 
-    if user.in_trusted_org:
-        with misp_api_for() as api:
-            result = api.domain_name_lookup(domain_name_in)
-        sightings_data = get_sightings_data(user=user, search_result=result)
+    with misp_api_for() as api:
+        result = api.attr_lookup(sighting_in)
 
-        if (sightings_data.can_add_sighting and type_in == '0') or (
-            sightings_data.can_add_false_positive and type_in == '1'
-        ):
-            app.logger.debug(f'report-sighting: domain_name {domain_name_in}')
-            app.logger.debug(f'report-sighting: type {type_in}')
-            with misp_api_for(user) as api:
-                api.add_sighting(
-                    domain_name=domain_name_in,
-                    sighting_type=type_in,
-                    source=f'{app.config["SIGHTING_SOURCE_PREFIX"]}{user.org_domain}',
-                )
-            return redirect(url_for('index', domain_name=domain_name_in))
-    return abort(401)
+    sightings_data = get_sightings_data(user=user, search_result=result)
+    if (sightings_data.can_add_sighting and type_in == '0') or (
+        sightings_data.can_add_false_positive and type_in == '1'
+    ):
+        app.logger.debug(f'report-sighting: {sighting_in.type.name} {sighting_in.name}')
+        app.logger.debug(f'report-sighting: type {type_in}')
+        with misp_api_for(user) as api:
+            api.add_sighting(
+                attr=sighting_in,
+                sighting_type=type_in,
+                source=f'{app.config["SIGHTING_SOURCE_PREFIX"]}{user.org_domain}',
+            )
+        return redirect(url_for('index', search_query=urllib.parse.quote_plus(sighting_in.name)))
 
 
 @app.route('/remove-sighting', methods=['POST'])
 @limiter.limit(rate_limit_from_config)
 def remove_sighting():
     user = get_user()
+    if not user.in_trusted_org:
+        return abort(401)
 
-    domain_name_in = request.form.get('domain_name', '')
+    sighting_in = parse_item(request.form.get('search_query', ''))
     type_in = request.form.get('type', '')
-    if not domain(domain_name_in) or not type_in:
+    if not sighting_in or not type_in:
         abort(400)
 
-    if user.in_trusted_org:
-        domain_name_in = request.form.get('domain_name', '')
-        type_in = request.form.get('type', '')
-        date_from = None
-        date_to = None
+    date_from = None
+    date_to = None
 
-        if type_in == '0':
-            # Only remove sightings added in the last X hours
-            min_vote_hours = current_app.config['SIGHTING_MIN_POSITIVE_VOTE_HOURS']
-            date_to = datetime.utcnow()
-            date_from = date_to - timedelta(hours=min_vote_hours)
+    if type_in == '0':
+        # Only remove sightings added in the last X hours
+        min_vote_hours = current_app.config['SIGHTING_MIN_POSITIVE_VOTE_HOURS']
+        date_to = datetime.utcnow()
+        date_from = date_to - timedelta(hours=min_vote_hours)
 
-        app.logger.debug(f'remove-sighting: domain_name {domain_name_in}')
-        app.logger.debug(f'remove-sighting: type {type_in}')
-        app.logger.debug(f'remove-sighting: date_from {date_from}')
-        app.logger.debug(f'remove-sighting: date_to {date_to}')
+    app.logger.debug(f'remove-sighting: domain_name {sighting_in}')
+    app.logger.debug(f'remove-sighting: type {type_in}')
+    app.logger.debug(f'remove-sighting: date_from {date_from}')
+    app.logger.debug(f'remove-sighting: date_to {date_to}')
 
-        with misp_api_for(user) as api:
-            api.remove_sighting(
-                domain_name=domain_name_in,
-                sighting_type=type_in,
-                date_from=date_from,
-                date_to=date_to,
-                source=f'{app.config["SIGHTING_SOURCE_PREFIX"]}{user.org_domain}',
-            )
-        return redirect(url_for('index', domain_name=domain_name_in))
-    return abort(401)
+    with misp_api_for(user) as api:
+        api.remove_sighting(
+            attr=sighting_in,
+            sighting_type=type_in,
+            date_from=date_from,
+            date_to=date_to,
+            source=f'{app.config["SIGHTING_SOURCE_PREFIX"]}{user.org_domain}',
+        )
+
+    return redirect(url_for('index', search_query=urllib.parse.quote_plus(sighting_in.name)))
 
 
 if __name__ == '__main__':
