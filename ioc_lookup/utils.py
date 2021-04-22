@@ -61,6 +61,9 @@ class SightingsData:
 
 @validator
 def defanged_url(value, public=False) -> bool:
+    """
+    hxxps://defanged.url/path -> https://defanged.url/path
+    """
     if value.startswith('hxxp://') or value.startswith('hxxps://'):
         value = value.replace('hxx', 'htt', 1)  # Replace only the first occurrence of hxx with htt
         return url(value=value, public=public)
@@ -84,6 +87,8 @@ def parse_items(items: Optional[str]) -> List[Attr]:
             elif defanged_url(item):
                 search_types = [AttrType.URL]
                 report_types = [AttrType.URL]
+                # MISP wants a correct URL, so replace hxx with htt
+                item = item.replace('hxx', 'htt', 1)
             elif ipv4(item) or ipv6(item):
                 search_types = [
                     AttrType.DOMAIN_IP,
