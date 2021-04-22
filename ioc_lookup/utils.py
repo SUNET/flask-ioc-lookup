@@ -10,7 +10,7 @@ from typing import Any, Dict, Iterator, List, Optional, Set
 from flask import abort, current_app, request
 from flask_limiter.util import get_ipaddr
 from pymisp import PyMISPError
-from validators import domain, ipv4, ipv6, md5, sha1, url
+from validators import domain, ipv4, ipv6, md5, sha1, url, sha256
 
 from ioc_lookup.misp_api import Attr, AttrType, MISPApi
 
@@ -88,6 +88,9 @@ def parse_items(items: Optional[str]) -> List[Attr]:
             elif sha1(item):
                 search_types = [AttrType.SHA1, AttrType.FILENAME_SHA1]
                 report_types = [AttrType.SHA1]
+            elif sha256(item):
+                search_types = [AttrType.SHA256, AttrType.FILENAME_SHA256]
+                report_types = [AttrType.SHA256]
             else:
                 raise ParseException(f'Could not parse {item}')
             parsed_items.append(Attr(value=item, search_types=search_types, report_types=report_types))
