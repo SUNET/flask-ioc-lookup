@@ -33,7 +33,7 @@ if __name__ == '__main__':
     if len(sys.argv) == 2:
         with open('config.yaml') as cf:
             config = yaml.safe_load(cf)
-        misp_api = MISPApi(config)
+        misp_api = MISPApi(config['MISP_URL'], config['MISP_KEY'])
         main(path=sys.argv[1], api=misp_api)
     else:
         print('Usage: misp_event_importer.py path_to_csv')
