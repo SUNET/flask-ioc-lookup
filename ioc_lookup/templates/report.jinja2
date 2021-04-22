@@ -3,7 +3,7 @@
 <head>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/bootstrap.min.css') }}" integrity="sha384-ggOyR0iXCbMQv3Xipma34MD+dH/1fQ784/j6cY/iJTQUOhcWr7x9JvoRxT2MZw1T">
     <meta charset="UTF-8">
-    <title>IOC domain lookup - Report result</title>
+    <title>IOC lookup - Report result</title>
 </head>
 <body>
 <div class="container">
@@ -12,9 +12,9 @@
         <p class="float-right">Logged in as: {{ user.identifier }}</p>
         <form method="post">
           <div class="form-group">
-            <label for="inputQuery1">Domain names and/or URLs for reporting</label>
-            <textarea type="text" class="form-control {% if error %}is-invalid{% endif %}" id="inputQuery1" name="report_query" aria-describedby="queryHelp" placeholder="Enter domain names or URLs to report" rows="3"></textarea>
-            <small id="queryHelp" class="form-text text-muted">Enter multiple FQDN or URLs ex. host.example.com or https://host.example.com/path. One per line.</small>
+            <label for="inputQuery1">Entities for reporting</label>
+            <textarea type="text" class="form-control {% if error %}is-invalid{% endif %}" id="inputQuery1" name="report_query" aria-describedby="queryHelp" placeholder="Enter {% for typ in supported_types %}{{ typ }}{% if not loop.last %}, {% endif %}{% endfor %} to report" rows="3"></textarea>
+            <small id="queryHelp" class="form-text text-muted">Supported types: {% for typ in supported_types %}{{ typ }}{% if not loop.last %}, {% endif %}{% endfor %}. One per line.</small>
 
             <label for="inputReference1">Reference (Optional)</label>
             <input type="text" class="form-control" id="inputReference1"
@@ -33,9 +33,9 @@
                 {% if result %}
                     {% for item in reported_items %}
                         {% if loop.last %}
-                            <pre>{% if loop.length > 1 %}and {% endif %}{{ item.type.name }} {{ item.name }} reported successfully.</pre>
+                            <pre>{% if loop.length > 1 %}and {% endif %}{{ item.value }} ({% for typ in item.report_types %}{{ typ.value }}{% if not loop.last %}, {% endif %}{% endfor %}) reported successfully.</pre>
                         {% else %}
-                            <pre>{{ item.type.name }} {{ item.name }},</pre>
+                            <pre>{{ item.value }} ({% for typ in item.report_types %}{{ typ.value }}{% if not loop.last %}, {% endif %}{% endfor %}),</pre>
                         {% endif %}
                     {% endfor %}
                 {% else %}

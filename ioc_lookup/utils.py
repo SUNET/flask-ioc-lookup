@@ -5,12 +5,12 @@ import urllib.parse
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, Iterator, List, Optional, Set
 
 from flask import abort, current_app, request
 from flask_limiter.util import get_ipaddr
 from pymisp import PyMISPError
-from validators import domain, url
+from validators import domain, ipv4, ipv6, md5, sha1, url
 
 from ioc_lookup.misp_api import Attr, AttrType, MISPApi
 
@@ -59,23 +59,46 @@ class SightingsData:
         return cls(can_add_sighting=can_add_sighting, can_add_false_positive=can_add_false_positive, votes=votes)
 
 
-def parse_items(items: str) -> List[Attr]:
-    parsed_items = []
+def parse_items(items: Optional[str]) -> List[Attr]:
+    parsed_items: List[Attr] = []
+    if not items:
+        return parsed_items
     for item in items.split('\n'):
         if item:
             item = ''.join(item.split())  # Normalize whitespace
             item = urllib.parse.unquote_plus(item)
             if domain(item):
-                parsed_items.append(Attr(name=item, type=AttrType.DOMAIN))
+                search_types = [AttrType.DOMAIN]
+                report_types = [AttrType.DOMAIN]
             elif url(item):
-                parsed_items.append(Attr(name=item, type=AttrType.URL))
+                search_types = [AttrType.URL]
+                report_types = [AttrType.URL]
+            elif ipv4(item) or ipv6(item):
+                search_types = [
+                    AttrType.DOMAIN_IP,
+                    AttrType.IP_SRC,
+                    AttrType.IP_SRC_PORT,
+                    AttrType.IP_DST,
+                    AttrType.IP_DST_PORT,
+                ]
+                report_types = [AttrType.IP_SRC]
+            elif md5(item):
+                search_types = [AttrType.MD5, AttrType.FILENAME_MD5]
+                report_types = [AttrType.MD5]
+            elif sha1(item):
+                search_types = [AttrType.SHA1, AttrType.FILENAME_SHA1]
+                report_types = [AttrType.SHA1]
             else:
                 raise ParseException(f'Could not parse {item}')
+            parsed_items.append(Attr(value=item, search_types=search_types, report_types=report_types))
     return parsed_items
 
 
-def parse_item(item: str) -> Optional[Attr]:
-    items = parse_items(item)
+def parse_item(item: Optional[str]) -> Optional[Attr]:
+    try:
+        items = parse_items(item)
+    except ParseException:
+        return None
     if not items:
         return None
     return items[0]
@@ -133,7 +156,7 @@ def get_sightings_data(user: User, search_result: List[Dict[str, Any]]):
     with misp_api_for() as api:
         for item in search_result:
             votes = Votes()
-            for sighting in api.domain_sighting_lookup(attribute_id=item['id']):
+            for sighting in api.sighting_lookup(attribute_id=item['id']):
                 org_name = sighting['source'].replace(current_app.config["SIGHTING_SOURCE_PREFIX"], '')
                 if sighting['type'] == '0':
                     votes.positives += 1
@@ -144,7 +167,7 @@ def get_sightings_data(user: User, search_result: List[Dict[str, Any]]):
             attribute_votes[item['id']] = votes
             with misp_api_for(user) as org_api:
                 org_sightings.extend(
-                    org_api.domain_sighting_lookup(
+                    org_api.sighting_lookup(
                         attribute_id=item['id'],
                         source=f'{current_app.config["SIGHTING_SOURCE_PREFIX"]}{user.org_domain}',
                     )
@@ -153,7 +176,7 @@ def get_sightings_data(user: User, search_result: List[Dict[str, Any]]):
 
 
 @contextmanager
-def misp_api_for(user: Optional[User] = None) -> MISPApi:
+def misp_api_for(user: Optional[User] = None) -> Iterator[MISPApi]:
     if user is None:
         # Use default api key as org specific api keys return org specific data
         user = User(identifier='default', is_trusted_user=False, in_trusted_org=False, org_domain='default')

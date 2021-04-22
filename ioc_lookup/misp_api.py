@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 
 import logging
-from dataclasses import dataclass
 from datetime import date, datetime
 from enum import Enum
 from typing import Any, List, Optional
@@ -9,20 +8,17 @@ from typing import Any, List, Optional
 from pymisp import ExpandedPyMISP
 from pymisp.mispevent import MISPAttribute, MISPEvent, MISPSighting
 
+from ioc_lookup.misp_attributes import Attr, AttrType
+
 logger = logging.getLogger(__name__)
 
 __author__ = 'lundberg'
 
 
-class AttrType(Enum):
-    DOMAIN = 'domain'
-    URL = 'url'
-
-
-@dataclass
-class Attr:
-    name: str
-    type: AttrType
+class EventCategory(Enum):
+    NETWORK_ACTIVITY = 'Network activity'
+    PAYLOAD_DELIVERY = 'Payload delivery'
+    INTERNAL_REFERENCE = 'Internal reference'
 
 
 class MISPApi:
@@ -38,25 +34,27 @@ class MISPApi:
     def org_name_id_mapping(self):
         pass
 
-    def attr_lookup(self, attr: Attr) -> List[Any]:
-        if attr.type is AttrType.DOMAIN:
-            return self.domain_name_lookup(domain_name=attr.name)
-        elif attr.type is AttrType.URL:
-            return self.url_lookup(url=attr.name)
-        else:
-            raise NotImplementedError(f'Lookup for typ {attr.type} not implemented.')
+    def attr_search(self, attr: Attr) -> List[Any]:
+        result = []
+        for typ in attr.search_types:
+            result += self.search(type=typ.value, value=attr.value).get('Attribute', [])
+        return result
 
-    def domain_name_lookup(self, domain_name: str) -> List[Any]:
+    def domain_name_search(self, domain_name: str) -> List[Any]:
         result = self.search(type='domain', value=domain_name)
         return result.get('Attribute', [])
 
-    def url_lookup(self, url: str) -> List[Any]:
-        result = self.search(type='url', value=url)
-        return result.get('Attribute', [])
-
-    def domain_sighting_lookup(self, attribute_id: str, source: Optional[str] = None) -> List[Any]:
+    def sighting_lookup(self, attribute_id: str, source: Optional[str] = None) -> List[Any]:
         result = self.search_sightings(context_id=attribute_id, source=source)
         return [item['Sighting'] for item in result]
+
+    def _get_report_category(self, attr: Attr) -> EventCategory:
+        if any(True for t in attr.report_types if t in [AttrType.DOMAIN, AttrType.URL, AttrType.IP_SRC]):
+            return EventCategory.NETWORK_ACTIVITY
+        elif any(True for t in attr.report_types if t in [AttrType.MD5, AttrType.SHA1]):
+            return EventCategory.PAYLOAD_DELIVERY
+        else:
+            raise NotImplementedError(f'EventCategory for {attr.report_types} not implemented')
 
     def add_event(
         self,
@@ -71,22 +69,24 @@ class MISPApi:
     ):
         attrs = []
         for item in attr_items:
-            report_attr = MISPAttribute()
-            report_attr.from_dict(
-                type=item.type.value,
-                category='Network activity',
-                to_ids=to_ids,
-                value=item.name,
-                comment=comment,
-                timestamp=ts,
-            )
-            attrs.append(report_attr)
+            category = self._get_report_category(item)
+            for report_type in item.report_types:
+                report_attr = MISPAttribute()
+                report_attr.from_dict(
+                    type=report_type.value,
+                    category=category.value,
+                    to_ids=to_ids,
+                    value=item.value,
+                    comment=comment,
+                    timestamp=ts,
+                )
+                attrs.append(report_attr)
 
         if reference:
             reference_attr = MISPAttribute()
             reference_attr.from_dict(
                 type='text',
-                category='Internal reference',
+                category=EventCategory.INTERNAL_REFERENCE.value,
                 value=reference,
                 disable_correlation=True,
                 comment=comment,
@@ -101,10 +101,12 @@ class MISPApi:
 
     def add_sighting(self, attr: Attr, sighting_type: str, source: str) -> MISPSighting:
         sighting = MISPSighting()
-        sighting['value'] = attr.name
+        sighting['value'] = attr.value
         sighting['type'] = sighting_type
         sighting['source'] = source
-        return self.pymisp.add_sighting(sighting)
+        res = self.pymisp.add_sighting(sighting, pythonify=True)
+        assert isinstance(res, MISPSighting)  # please mypy
+        return res
 
     def remove_sighting(
         self,
@@ -114,18 +116,19 @@ class MISPApi:
         date_from: Optional[datetime] = None,
         date_to: Optional[datetime] = None,
     ):
-        sightings = []
-        for item in self.attr_lookup(attr):
-            sightings.extend(
-                self.pymisp.search_sightings(
-                    context='attribute',
-                    context_id=item['id'],
-                    type_sighting=sighting_type,
-                    source=source,
-                    date_from=date_from,
-                    date_to=date_to,
-                    pythonify=True,
-                )
+        sightings: List[MISPSighting] = []
+        for item in self.attr_search(attr):
+            res = self.pymisp.search_sightings(
+                context='attribute',
+                context_id=item['id'],
+                type_sighting=sighting_type,
+                source=source,
+                date_from=date_from,
+                date_to=date_to,
+                pythonify=True,
             )
+            # Can't get mypy to understand that sighting contains a MISPSighting
+            sightings.extend([d['sighting'] for d in res if d.get('sighting') is not None])  # type: ignore
+            # Please mypy
         for sighting in sightings:
             self.pymisp.delete_sighting(sighting)

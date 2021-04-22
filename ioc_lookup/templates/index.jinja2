@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <link rel="icon" href="{{ url_for('static', filename='img/favicon.ico') }}" type="image/x-icon">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/bootstrap.min.css') }}" integrity="sha384-ggOyR0iXCbMQv3Xipma34MD+dH/1fQ784/j6cY/iJTQUOhcWr7x9JvoRxT2MZw1T">
-    <title>IOC domain lookup</title>
+    <title>IOC lookup</title>
 </head>
 <body>
 <div class="container">
@@ -13,19 +13,20 @@
     <p class="float-right">Logged in as: {{ user.identifier }}</p>
     <form method="post">
       <div class="form-group">
-        <label for="inputQuery1">Domain name and URL search</label>
-        <input type="text" class="form-control {% if error %}is-invalid{% endif %}" id="inputQuery1" name="search_query" aria-describedby="searchQueryHelp" placeholder="Search for domain name or URL">
+        <label for="inputQuery1">IOC entity search</label>
+        <input type="text" class="form-control {% if error %}is-invalid{% endif %}" id="inputQuery1" name="search_query" aria-describedby="searchQueryHelp" placeholder="Search for {% for typ in supported_types %}{{ typ }}{% if not loop.last %}, {% endif %}{% endfor %}">
         <div class="invalid-feedback">
           {{ error }}
         </div>
-        <small id="domainHelp" class="form-text text-muted">Enter a FQDN or URL ex. host.example.com or https://host.example.com/path</small>
+        <small id="searchHelp" class="form-text text-muted">Supported queries: {% for typ in supported_types %}{{ typ }}{% if not loop.last %}, {% endif %}{% endfor %}</small>
       </div>
       <button type="submit" class="btn btn-primary">Search</button>
     </form>
     {% if result is defined %}
-        <h4 class="pt-3">Result for {{ original_search_query }}</h4>
+
+        <h4 class="pt-3">Result for {{ parsed_search_query.value }} ({% for typ in parsed_search_query.search_types %}{{ typ.value }}{% if not loop.last %}, {% endif %}{% endfor %})</h4>
         {% if parent_domain_name %}
-            <small id="resultHelp" class="text-muted">No result for {{ original_search_query }} found, showing result for {{ parent_domain_name }}.</small>
+            <small id="resultHelp" class="text-muted">No result for {{ parsed_search_query.value }} ({% for typ in parsed_search_query.search_types %}{{ typ.value }}{% if not loop.last %}, {% endif %}{% endfor %}) found, showing result for {{ parent_domain_name }}.</small>
         {% endif %}
         <div class="card bg-light">
             <div class="card-body">
@@ -63,7 +64,7 @@
                         {% if sightings_data.can_add_sighting %}
                             <div class="btn-group mr-2" role="group">
                                 <form class="form-inline" action="{{ url_for('report_sighting') }}" method="post">
-                                    <input type="hidden" name="search_query" value="{{ original_search_query }}" />
+                                    <input type="hidden" name="search_query" value="{{ parsed_search_query.value }}" />
                                     <input type="hidden" name="type" value="0" />
                                     <span class="d-inline-block" tabindex="0" {% if not user.in_trusted_org %}data-toggle="tooltip" data-placement="bottom" title="Only trusted organizations can vote"{% endif %}>
                                         <button class="btn btn-success" type="submit" {% if not user.in_trusted_org %}disabled{% endif %}>Add sighting</button>
@@ -73,7 +74,7 @@
                         {% else %}
                             <div class="btn-group mr-2" role="group">
                                 <form class="form-inline" action="{{ url_for('remove_sighting') }}" method="post">
-                                    <input type="hidden" name="search_query" value="{{ original_search_query }}" />
+                                    <input type="hidden" name="search_query" value="{{ parsed_search_query.value }}" />
                                     <input type="hidden" name="type" value="0" />
                                     <span class="d-inline-block" tabindex="0" {% if not user.in_trusted_org %}data-toggle="tooltip" data-placement="bottom" title="Only trusted organizations can vote"{% endif %}>
                                         <button class="btn btn-warning" type="submit" {% if not user.in_trusted_org %}disabled{% endif %}>Remove sighting</button>
@@ -84,7 +85,7 @@
                         {% if sightings_data.can_add_false_positive %}
                             <div class="btn-group mr-2" role="group">
                                 <form class="form-inline" action="{{ url_for('report_sighting') }}" method="post">
-                                    <input type="hidden" name="search_query" value="{{ original_search_query }}" />
+                                    <input type="hidden" name="search_query" value="{{ parsed_search_query.value }}" />
                                     <input type="hidden" name="type" value="1" />
                                     <span class="d-inline-block" {% if not user.in_trusted_org %}tabindex="0" data-toggle="tooltip" data-placement="bottom" title="Only trusted organizations can vote"{% endif %}>
                                         <button class="btn btn-danger" type="submit" {% if not user.in_trusted_org %}disabled{% endif %}>Mark as false-positive</button>
@@ -94,7 +95,7 @@
                         {% else %}
                             <div class="btn-group mr-2" role="group">
                                 <form class="form-inline" action="{{ url_for('remove_sighting') }}" method="post">
-                                    <input type="hidden" name="search_query" value="{{ original_search_query }}" />
+                                    <input type="hidden" name="search_query" value="{{ parsed_search_query.value }}" />
                                     <input type="hidden" name="type" value="1" />
                                     <span class="d-inline-block" tabindex="0" {% if not user.in_trusted_org %}data-toggle="tooltip" data-placement="bottom" title="Only trusted organizations can vote"{% endif %}>
                                         <button class="btn btn-warning" type="submit" {% if not user.in_trusted_org %}disabled{% endif %}>Remove mark as false-positive</button>
@@ -108,11 +109,11 @@
         {% endif %}
         {% if parent_domain_name or not result %}
             <hr>
-            <h6 class="mt-2">Report domain or URL</h6>
+            <h6 class="mt-2">Report event</h6>
             <form class="form-inline" action="{{ url_for('report') }}" method="post">
               <div class="form-group mb-2">
-                <label for="reportQuery1" class="sr-only">Domain or URL</label>
-                <input type="text" readonly class="form-control" id="reportQuery1" name="report_query" value="{{ original_search_query }}">
+                <label for="reportQuery1" class="sr-only">{% for typ in supported_types %}{{ typ }}{% if not loop.last %}, {% endif %}{% endfor %}</label>
+                <input type="text" readonly class="form-control" id="reportQuery1" name="report_query" value="{{ parsed_search_query.value }}">
               </div>
               <div class="form-group mx-sm-3 mb-2">
                 <label for="inputReference1" class="sr-only">Reference</label>
@@ -124,7 +125,7 @@
         {% endif %}
     {% endif %}
     <hr>
-    <p>If you want to report multiple domains or URLs, use the <a href="{{ url_for('report') }}">bulk report form</a>.</p>
+    <p>If you want to report multiple entities, use the <a href="{{ url_for('report') }}">bulk report form</a>.</p>
 </div>
 <script src="{{ url_for('static', filename='js/jquery-3.5.1.slim.min.js') }}" integrity="sha384-DfXdz2htPH0lsSSs5nCTpuj/zy4C+OGpamoFVy38MVBnE+IbbVYUew+OrCXaRkfj"></script>
 <script src="{{ url_for('static', filename='js/bootstrap.bundle.js') }}" integrity="sha384-szbKYgPl66wivXHlSpJF+CKDAVckMVnlGrP25Sndhe+PwOBcXV9LlFh4MUpRhjIB"></script>
