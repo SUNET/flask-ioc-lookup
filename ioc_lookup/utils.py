@@ -10,7 +10,7 @@ from typing import Any, Dict, Iterator, List, Optional, Set
 from flask import abort, current_app, request
 from flask_limiter.util import get_ipaddr
 from pymisp import PyMISPError
-from validators import domain, ipv4, ipv6, md5, sha1, url, sha256
+from validators import domain, ipv4, ipv6, md5, sha1, url, sha256, validator
 
 from ioc_lookup.misp_api import Attr, AttrType, MISPApi
 
@@ -59,6 +59,14 @@ class SightingsData:
         return cls(can_add_sighting=can_add_sighting, can_add_false_positive=can_add_false_positive, votes=votes)
 
 
+@validator
+def defanged_url(value, public=False) -> bool:
+    if value.startswith('hxxp://') or value.startswith('hxxps://'):
+        value = value.replace('hxx', 'htt', 1)  # Replace only the first occurrence of hxx with htt
+        return url(value=value, public=public)
+    return False
+
+
 def parse_items(items: Optional[str]) -> List[Attr]:
     parsed_items: List[Attr] = []
     if not items:
@@ -71,6 +79,9 @@ def parse_items(items: Optional[str]) -> List[Attr]:
                 search_types = [AttrType.DOMAIN]
                 report_types = [AttrType.DOMAIN]
             elif url(item):
+                search_types = [AttrType.URL]
+                report_types = [AttrType.URL]
+            elif defanged_url(item):
                 search_types = [AttrType.URL]
                 report_types = [AttrType.URL]
             elif ipv4(item) or ipv6(item):
