@@ -30,7 +30,7 @@ class Attr:
 
     def get_first_level_domain(self) -> Optional[str]:
         if self.type in [AttrType.URL, AttrType.DOMAIN]:
-            return get_fld(self.value, fix_protocol=True, fail_silently=True)
+            return get_fld(self.value, fix_protocol=True, fail_silently=True, search_private=False)
         return None
 
 
