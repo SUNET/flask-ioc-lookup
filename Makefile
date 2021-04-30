@@ -6,3 +6,6 @@ reformat:
 
 typecheck:
 	mypy --ignore-missing-imports $(SOURCE)
+
+update_deps:
+	pip-compile -v --upgrade --generate-hashes --index-url https://pypi.sunet.se/simple
