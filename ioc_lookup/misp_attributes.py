@@ -2,21 +2,36 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+import urllib.parse
+from dataclasses import dataclass, field
 from enum import Enum
-from typing import List
+from typing import List, Optional
 
 __author__ = 'lundberg'
 
 # Friendly names for supported AttrTypes
+from tld import get_fld
+
 SUPPORTED_TYPES = ['domain name', 'URL', 'IP address', 'hash']
 
 
 @dataclass
 class Attr:
     value: str
-    search_types: List[AttrType]
-    report_types: List[AttrType]
+    type: AttrType
+    search_types: List[AttrType] = field(default_factory=list)
+    report_types: List[AttrType] = field(default_factory=list)
+
+    def get_domain(self) -> Optional[str]:
+        if self.type in [AttrType.URL, AttrType.DOMAIN]:
+            url_components = urllib.parse.urlsplit(self.value)
+            return url_components.netloc
+        return None
+
+    def get_first_level_domain(self) -> Optional[str]:
+        if self.type in [AttrType.URL, AttrType.DOMAIN]:
+            return get_fld(self.value, fix_protocol=True, fail_silently=True)
+        return None
 
 
 class AttrType(Enum):

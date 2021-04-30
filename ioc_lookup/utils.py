@@ -10,7 +10,7 @@ from typing import Any, Dict, Iterator, List, Optional, Set
 from flask import abort, current_app, request
 from flask_limiter.util import get_ipaddr
 from pymisp import PyMISPError
-from validators import domain, ipv4, ipv6, md5, sha1, url, sha256, validator
+from validators import domain, ipv4, ipv6, md5, sha1, sha256, url, validator
 
 from ioc_lookup.misp_api import Attr, AttrType, MISPApi
 
@@ -70,6 +70,15 @@ def defanged_url(value, public=False) -> bool:
     return False
 
 
+def get_canonical_url(uri: str) -> str:
+    url_components = urllib.parse.urlsplit(uri)
+    # Always end url with /
+    path = url_components.path
+    if not path.endswith('/'):
+        path = f'{url_components.path}/'
+    return urllib.parse.urlunsplit([url_components.scheme, url_components.netloc, path, None, None])
+
+
 def parse_items(items: Optional[str]) -> List[Attr]:
     parsed_items: List[Attr] = []
     if not items:
@@ -79,17 +88,23 @@ def parse_items(items: Optional[str]) -> List[Attr]:
             item = ''.join(item.split())  # Normalize whitespace
             item = urllib.parse.unquote_plus(item)
             if domain(item):
+                typ = AttrType.DOMAIN
                 search_types = [AttrType.DOMAIN]
                 report_types = [AttrType.DOMAIN]
             elif url(item):
+                typ = AttrType.URL
                 search_types = [AttrType.URL]
                 report_types = [AttrType.URL]
+                # Remove arguments from URLs
+                item = get_canonical_url(item)
             elif defanged_url(item):
+                typ = AttrType.URL
                 search_types = [AttrType.URL]
                 report_types = [AttrType.URL]
                 # MISP wants a correct URL, so replace hxx with htt
                 item = item.replace('hxx', 'htt', 1)
             elif ipv4(item) or ipv6(item):
+                typ = AttrType.IP_SRC
                 search_types = [
                     AttrType.DOMAIN_IP,
                     AttrType.IP_SRC,
@@ -99,17 +114,20 @@ def parse_items(items: Optional[str]) -> List[Attr]:
                 ]
                 report_types = [AttrType.IP_SRC]
             elif md5(item):
+                typ = AttrType.MD5
                 search_types = [AttrType.MD5, AttrType.FILENAME_MD5]
                 report_types = [AttrType.MD5]
             elif sha1(item):
+                typ = AttrType.SHA1
                 search_types = [AttrType.SHA1, AttrType.FILENAME_SHA1]
                 report_types = [AttrType.SHA1]
             elif sha256(item):
+                typ = AttrType.SHA256
                 search_types = [AttrType.SHA256, AttrType.FILENAME_SHA256]
                 report_types = [AttrType.SHA256]
             else:
                 raise ParseException(f'Could not parse {item}')
-            parsed_items.append(Attr(value=item, search_types=search_types, report_types=report_types))
+            parsed_items.append(Attr(value=item, type=typ, search_types=search_types, report_types=report_types))
     return parsed_items
 
 

@@ -124,6 +124,19 @@
             </form>
         {% endif %}
     {% endif %}
+    {% if related_result is defined %}
+        <h5 class="pt-3">Related results</h5>
+        <div class="card bg-light">
+            <div class="card-body">
+                {% for item in related_result %}
+                    <pre><a href="{{ misp_url }}events/view/{{ item.event_id }}">MISP event {{ item.event_id }}</a> | {{ item.timestamp|ts }} | {{ item.value }} | {{ item.comment }}</pre>
+                    {% if loop.last %}
+                        <pre>Note: Event links requires access to MISP.</pre>
+                    {% endif %}
+                {% endfor %}
+            </div>
+        </div>
+    {% endif %}
     <hr>
     <p>If you want to report multiple entities, use the <a href="{{ url_for('report') }}">bulk report form</a>.</p>
 </div>

@@ -2,6 +2,7 @@
 
 import sys
 import urllib.parse
+from copy import copy
 from datetime import datetime, timedelta
 from os import environ
 
@@ -12,7 +13,7 @@ from validators import domain
 from whitenoise import WhiteNoise
 
 from ioc_lookup.misp_api import AttrType, MISPApi
-from ioc_lookup.misp_attributes import SUPPORTED_TYPES
+from ioc_lookup.misp_attributes import SUPPORTED_TYPES, Attr
 from ioc_lookup.utils import (
     ParseException,
     get_ipaddr_or_eppn,
@@ -106,23 +107,21 @@ def index(search_query=None):
             original_search_query = search_query
 
         search_item = parse_item(original_search_query)
+        related_result = []
         if search_item:
             with misp_api_for() as api:  # Use the default api to get non org specific data
                 result = api.attr_search(search_item)
-                if AttrType.URL in search_item.search_types:
-                    # Do a domain search also for URLs
-                    netloc = urllib.parse.urlsplit(search_item.value)[1]
-                    result += api.domain_name_search(domain_name=netloc)
-                if not result and AttrType.DOMAIN in search_item.search_types:
-                    # Try searching for a less exact domain name
-                    parent_domain_name = '.'.join(search_item.value.split('.')[1:])
-                    if parent_domain_name and domain(parent_domain_name):
-                        result = api.domain_name_search(parent_domain_name)
+                if AttrType.DOMAIN in search_item.search_types or AttrType.URL in search_item.search_types:
+                    first_level_domain = search_item.get_first_level_domain()
+                    # Only add to the search if first_level_domain differs from search_item
+                    if first_level_domain:
+                        related_result = api.domain_name_search(domain_name=f'%.{first_level_domain}%', searchall=True)
 
             sightings_data = get_sightings_data(user=user, search_result=result)
             return render_template(
                 'index.jinja2',
                 result=result,
+                related_result=related_result,
                 parsed_search_query=search_item,
                 parent_domain_name=parent_domain_name,
                 supported_types=SUPPORTED_TYPES,
@@ -151,6 +150,13 @@ def report():
         if not report_items:
             error = f'No valid input found'
             return render_template('report.jinja2', error=error, supported_types=SUPPORTED_TYPES, user=user)
+
+        for item in copy(report_items):
+            if AttrType.URL in item.report_types:
+                # Also report FQDN for URLs
+                url_domain = item.get_domain()
+                if domain is not None:
+                    report_items.append(Attr(value=url_domain, type=AttrType.DOMAIN, report_types=[AttrType.DOMAIN]))
 
         tags = ['OSINT', 'TLP:GREEN']
         publish = False

@@ -28,6 +28,11 @@ class MISPApi:
     def search(self, controller: str = 'attributes', **kwargs):
         return self.pymisp.search(controller, **kwargs)
 
+    def searchall(self, value: str, controller: str = 'attributes') -> List[Any]:
+        result = self.pymisp.search(controller, value=value, searchall=True)
+        assert isinstance(result, dict)  # Please mypy
+        return result.get('Attribute', [])
+
     def search_sightings(self, context_id: str, context: str = 'attribute', source: Optional[str] = None):
         return self.pymisp.search_sightings(context=context, context_id=context_id, source=source)
 
@@ -40,8 +45,12 @@ class MISPApi:
             result += self.search(type=typ.value, value=attr.value).get('Attribute', [])
         return result
 
-    def domain_name_search(self, domain_name: str) -> List[Any]:
-        result = self.search(type='domain', value=domain_name)
+    def domain_name_search(self, domain_name: str, searchall: bool = False) -> List[Any]:
+        result = self.search(type='domain', value=domain_name, searchall=searchall)
+        return result.get('Attribute', [])
+
+    def url_search(self, url: str, searchall: bool = False) -> List[Any]:
+        result = self.search(type='url', value=url, searchall=searchall)
         return result.get('Attribute', [])
 
     def sighting_lookup(self, attribute_id: str, source: Optional[str] = None) -> List[Any]:
