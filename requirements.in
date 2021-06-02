@@ -7,3 +7,6 @@ whitenoise>=4.1.2
 Flask-Limiter>=1.0.1
 tld>=0.12.5
 gunicorn
+
+# needed for hash
+importlib-metadata
