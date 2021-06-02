@@ -1,0 +1,15 @@
+builders:
+  - script
+  - docker
+triggers:
+  cron: "@weekly"
+slack:
+  room: "devops-builds"
+docker_name: sunet/flask-ioc-lookup
+clean_workspace: true
+script:
+  - "virtualenv -p python3.7 venv"
+  - ". venv/bin/activate"
+  - "pip install --upgrade setuptools pip wheel"
+  - "pip install --index-url https://pypi.sunet.se -r test_requirements.txt"
+  - "pytest"
