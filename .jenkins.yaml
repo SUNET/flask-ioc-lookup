@@ -12,4 +12,4 @@ script:
   - ". venv/bin/activate"
   - "pip install --upgrade setuptools pip wheel"
   - "pip install --index-url https://pypi.sunet.se -r test_requirements.txt"
-  - "pytest"
+  - "make test"

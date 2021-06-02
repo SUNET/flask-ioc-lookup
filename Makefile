@@ -8,12 +8,14 @@ reformat:
 typecheck:
 	mypy --ignore-missing-imports $(SOURCE)
 
+test:
+	PYTHONPATH=$(SRCDIR) pytest -vvv -ra --log-cli-level DEBUG
+
 docker_image:
 	docker build -t docker.sunet.se/sunet/flask-ioc-lookup .
 
 docker_push:
 	docker push docker.sunet.se/sunet/flask-ioc-lookup:latest
-
 
 %ments.txt: %ments.in
 	CUSTOM_COMPILE_COMMAND="make update_deps" $(PIPCOMPILE) $< > $@
