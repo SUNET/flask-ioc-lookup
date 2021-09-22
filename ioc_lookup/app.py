@@ -109,6 +109,7 @@ def index(search_query=None):
 
         search_item = parse_item(original_search_query)
         related_result = []
+        related_results_limit = None
         if search_item:
             with misp_api_for() as api:  # Use the default api to get non org specific data
                 result = api.attr_search(search_item)
