@@ -45,8 +45,16 @@ class MISPApi:
             result += self.search(type=typ.value, value=attr.value).get('Attribute', [])
         return result
 
-    def domain_name_search(self, domain_name: str, searchall: bool = False) -> List[Any]:
-        result = self.search(type='domain', value=domain_name, searchall=searchall)
+    def domain_name_search(
+        self,
+        domain_name: str,
+        searchall: bool = False,
+        publish_timestamp: Optional[datetime] = None,
+        limit: Optional[int] = None,
+    ) -> List[Any]:
+        result = self.search(
+            type='domain', value=domain_name, searchall=searchall, publish_timestamp=publish_timestamp, limit=limit
+        )
         return result.get('Attribute', [])
 
     def url_search(self, url: str, searchall: bool = False) -> List[Any]:

@@ -22,6 +22,7 @@ from ioc_lookup.utils import (
     misp_api_for,
     parse_item,
     parse_items,
+    utc_now,
 )
 
 # Read config
@@ -115,7 +116,19 @@ def index(search_query=None):
                     first_level_domain = search_item.get_first_level_domain()
                     # Only add to the search if first_level_domain differs from search_item
                     if first_level_domain:
-                        related_result = api.domain_name_search(domain_name=f'%.{first_level_domain}%', searchall=True)
+                        # limit number of results, None for all
+                        limit = app.config.get('LIMIT_RELATED_RESULTS', None)
+                        # return events after this date, None for all
+                        publish_timestamp = None
+                        if app.config.get('LIMIT_DAYS_RELATED_RESULTS') is not None:
+                            publish_timestamp = utc_now() - timedelta(days=app.config.get('LIMIT_DAYS_RELATED_RESULTS'))
+
+                        related_result = api.domain_name_search(
+                            domain_name=f'%.{first_level_domain}%',
+                            searchall=True,
+                            publish_timestamp=publish_timestamp,
+                            limit=limit,
+                        )
 
             sightings_data = get_sightings_data(user=user, search_result=result)
             return render_template(

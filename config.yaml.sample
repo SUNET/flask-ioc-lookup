@@ -1,4 +1,3 @@
-
 MISP_URL: 'https://misp-instance/'
 MISP_KEY: 'secret'
 MISP_VERIFYCERT: true
@@ -9,3 +8,7 @@ REQUEST_RATE_LIMIT: '1/second'
 TRUSTED_USERS: '/path/to/trusted_users.yaml'
 TRUSTED_ORGS: '/path/to/trusted_orgs.yaml'
 LOG_LEVEL: INFO
+# limit date span for related results, null for no limit
+LIMIT_DAYS_RELATED_RESULTS: 365  # days
+# limit number of related results, null for all
+LIMIT_RELATED_RESULTS: 10

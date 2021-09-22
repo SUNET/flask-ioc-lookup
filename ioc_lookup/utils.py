@@ -4,7 +4,7 @@ __author__ = 'lundberg'
 import urllib.parse
 from contextlib import contextmanager
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Iterator, List, Optional, Set
 
 from flask import abort, current_app, request
@@ -240,3 +240,8 @@ def misp_api_for(user: Optional[User] = None) -> Iterator[MISPApi]:
     else:
         current_app.logger.debug(f'Using {user.org_domain} api')
         yield api
+
+
+def utc_now() -> datetime:
+    """Return current time with tz=UTC"""
+    return datetime.now(tz=timezone.utc)
