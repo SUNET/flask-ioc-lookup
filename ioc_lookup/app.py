@@ -118,7 +118,13 @@ def index(search_query=None):
                     # Only add to the search if first_level_domain differs from search_item
                     if first_level_domain:
                         # limit number of results, None for all
-                        related_results_limit = app.config.get('LIMIT_RELATED_RESULTS', None)
+                        if request.form.get('limit_related_results') == 'no':
+                            # set no limit for related result
+                            related_results_limit = None
+                        else:
+                            # use config value if nothing else specified
+                            related_results_limit = app.config.get('LIMIT_RELATED_RESULTS', None)
+
                         # return events after this date, None for all
                         publish_timestamp = None
                         if app.config.get('LIMIT_DAYS_RELATED_RESULTS') is not None:

@@ -126,7 +126,7 @@
     {% endif %}
     {% if related_result %}
         <h5 class="pt-3">Related results</h5>
-        {% if related_results_limit %}<small>Display limit {{ related_results_limit }} events</small>{% endif %}
+        {% if related_results_limit %}<small>Display limit {{ related_results_limit }} event{% if related_results_limit > 1 %}s{% endif %}</small>{% endif %}
         <div class="card bg-light">
             <div class="card-body">
                 {% for item in related_result %}
@@ -135,6 +135,15 @@
                         <pre>Note: Event links requires access to MISP.</pre>
                     {% endif %}
                 {% endfor %}
+            </div>
+        </div>
+        <div class="btn-toolbar mt-1" role="toolbar" aria-label="Toolbar with button groups">
+            <div class="btn-group mr-2" role="group">
+                <form method="post">
+                    <input type="hidden" id="inputQuery2" name="search_query" value="{{ parsed_search_query.value }}">
+                    <input type="hidden" id="inputLimit2" name="limit_related_results" value="no">
+                    <button type="submit" class="btn btn-primary">Get all related results</button>
+                </form>
             </div>
         </div>
     {% endif %}
