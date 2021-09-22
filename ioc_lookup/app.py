@@ -117,7 +117,7 @@ def index(search_query=None):
                     # Only add to the search if first_level_domain differs from search_item
                     if first_level_domain:
                         # limit number of results, None for all
-                        limit = app.config.get('LIMIT_RELATED_RESULTS', None)
+                        related_results_limit = app.config.get('LIMIT_RELATED_RESULTS', None)
                         # return events after this date, None for all
                         publish_timestamp = None
                         if app.config.get('LIMIT_DAYS_RELATED_RESULTS') is not None:
@@ -127,7 +127,7 @@ def index(search_query=None):
                             domain_name=f'%.{first_level_domain}%',
                             searchall=True,
                             publish_timestamp=publish_timestamp,
-                            limit=limit,
+                            limit=related_results_limit,
                         )
 
             sightings_data = get_sightings_data(user=user, search_result=result)
@@ -135,6 +135,7 @@ def index(search_query=None):
                 'index.jinja2',
                 result=result,
                 related_result=related_result,
+                related_results_limit=related_results_limit,
                 parsed_search_query=search_item,
                 parent_domain_name=parent_domain_name,
                 supported_types=SUPPORTED_TYPES,

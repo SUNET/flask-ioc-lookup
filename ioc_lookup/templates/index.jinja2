@@ -126,6 +126,7 @@
     {% endif %}
     {% if related_result %}
         <h5 class="pt-3">Related results</h5>
+        {% if related_results_limit %}<small>Display limit {{ related_results_limit }} events</small>{% endif %}
         <div class="card bg-light">
             <div class="card-body">
                 {% for item in related_result %}
