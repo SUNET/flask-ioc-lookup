@@ -66,9 +66,19 @@ class MISPApi:
         return [item['Sighting'] for item in result]
 
     def _get_report_category(self, attr: Attr) -> EventCategory:
-        if any(True for t in attr.report_types if t in [AttrType.DOMAIN, AttrType.URL, AttrType.IP_SRC]):
+        network_activity_types = [
+            AttrType.DOMAIN,
+            AttrType.URL,
+            AttrType.IP_SRC,
+            AttrType.IP_DST,
+            AttrType.IP_SRC_PORT,
+            AttrType.IP_DST_PORT,
+        ]
+        payload_delivery_types = [AttrType.MD5, AttrType.SHA1, AttrType.SHA256]
+
+        if any(True for t in attr.report_types if t in network_activity_types):
             return EventCategory.NETWORK_ACTIVITY
-        elif any(True for t in attr.report_types if t in [AttrType.MD5, AttrType.SHA1]):
+        elif any(True for t in attr.report_types if t in payload_delivery_types):
             return EventCategory.PAYLOAD_DELIVERY
         else:
             raise NotImplementedError(f'EventCategory for {attr.report_types} not implemented')
