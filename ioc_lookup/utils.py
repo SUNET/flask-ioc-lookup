@@ -8,7 +8,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Iterator, List, Optional, Set
 
 from flask import abort, current_app, request
-from flask_limiter.util import get_ipaddr
+from flask_limiter.util import get_remote_address
 from pymisp import PyMISPError
 from validators import domain, ipv4, ipv6, md5, sha1, sha256, url, validator
 
@@ -151,7 +151,7 @@ def get_ipaddr_or_eppn() -> str:
     current_app.logger.debug(f'Identifier from request environment: {identifier}')
     if not identifier:
         current_app.logger.warning('HTTP_EPPN is missing from request environment')
-        identifier = get_ipaddr()
+        identifier = get_remote_address()
         current_app.logger.debug(f'Identifier from get_ipaddr: {identifier}')
     return identifier
 
