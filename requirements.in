@@ -11,3 +11,4 @@ gunicorn
 
 # needed for hash
 importlib-metadata
+importlib-resources
