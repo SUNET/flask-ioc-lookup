@@ -4,3 +4,6 @@ pytest-cov
 isort
 black
 mypy
+
+# typing stubs
+types-PyYAML
