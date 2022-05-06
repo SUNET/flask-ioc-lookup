@@ -12,6 +12,7 @@ from flask_limiter import Limiter
 from validators import domain
 from whitenoise import WhiteNoise
 
+from ioc_lookup.ioc_lookup_app import IOCLookupApp
 from ioc_lookup.misp_api import AttrType, MISPApi
 from ioc_lookup.misp_attributes import SUPPORTED_TYPES, Attr
 from ioc_lookup.utils import (
@@ -35,8 +36,9 @@ except FileNotFoundError as e:
     print(e)
     sys.exit(1)
 
+
 # Init app
-app = Flask(__name__)
+app = IOCLookupApp(__name__)
 app.config.from_mapping(config)
 # Init logging
 app.config.setdefault('LOG_LEVEL', 'INFO')
@@ -44,7 +46,6 @@ app.logger.setLevel(app.config['LOG_LEVEL'])
 # Init static files
 app.wsgi_app = WhiteNoise(app.wsgi_app, root=config.get('STATIC_FILES', 'ioc_lookup/static/'))  # type: ignore
 # Init trusted user list
-app.trusted_users = []
 if app.config.get('TRUSTED_USERS'):
     try:
         with open(app.config['TRUSTED_USERS']) as f:
@@ -55,7 +56,6 @@ if app.config.get('TRUSTED_USERS'):
         app.logger.warning(f'Could not initialize trusted user list: {e}')
 
 # Init trusted orgs
-app.trusted_orgs = {}
 if app.config.get('TRUSTED_ORGS'):
     try:
         with open(app.config['TRUSTED_ORGS']) as f:
