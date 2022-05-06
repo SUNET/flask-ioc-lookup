@@ -3,11 +3,14 @@
 import sys
 import urllib.parse
 from copy import copy
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 from os import environ
+from typing import Any, Dict, List, Optional, cast
 
 import yaml
 from flask import Flask, abort, current_app, redirect, render_template, request, url_for
+from flask_caching import Cache
 from flask_limiter import Limiter
 from validators import domain
 from whitenoise import WhiteNoise
@@ -17,6 +20,8 @@ from ioc_lookup.misp_api import AttrType, MISPApi
 from ioc_lookup.misp_attributes import SUPPORTED_TYPES, Attr
 from ioc_lookup.utils import (
     ParseException,
+    SightingsData,
+    User,
     get_ipaddr_or_eppn,
     get_sightings_data,
     get_user,
@@ -82,6 +87,9 @@ app.misp_apis = {'default': MISPApi(app.config['MISP_URL'], app.config['MISP_KEY
 # Init rate limiting
 limiter = Limiter(app, key_func=get_ipaddr_or_eppn)
 
+# Init cache
+cache = Cache(app)
+
 
 def rate_limit_from_config():
     return app.config.get('REQUEST_RATE_LIMIT', '1/second')
@@ -92,6 +100,43 @@ def _jinja2_filter_ts(ts: str):
     dt = datetime.utcfromtimestamp(int(ts))
     fmt = '%Y-%m-%d %H:%M:%S'
     return dt.strftime(fmt)
+
+
+@dataclass
+class SearchResult:
+    result: List[Any]
+    sightings_data: SightingsData
+    related_result: List[Any]
+
+
+@cache.memoize()
+def do_search(
+    search_item: Attr,
+    user: User,
+    limit_days: Optional[int] = None,
+    limit_related: Optional[int] = None,
+):
+    related_result = []
+    with misp_api_for() as api:  # Use the default api to get non org specific data
+        result = api.attr_search(search_item)
+        if AttrType.DOMAIN in search_item.search_types or AttrType.URL in search_item.search_types:
+            first_level_domain = search_item.get_first_level_domain()
+            # Only add to the search if first_level_domain differs from search_item
+            if first_level_domain:
+                # return events after this date, None for all
+                publish_timestamp = None
+                if limit_days is not None:
+                    publish_timestamp = utc_now() - timedelta(days=limit_days)
+
+                related_result = api.domain_name_search(
+                    domain_name=f'%.{first_level_domain}%',
+                    searchall=True,
+                    publish_timestamp=publish_timestamp,
+                    limit=limit_related,
+                )
+
+    sightings_data = get_sightings_data(user=user, search_result=result)
+    return SearchResult(result=result, related_result=related_result, sightings_data=sightings_data)
 
 
 # Views
@@ -108,46 +153,29 @@ def index(search_query=None):
             original_search_query = search_query
 
         search_item = parse_item(original_search_query)
-        related_result = []
-        related_results_limit = None
         if search_item:
-            with misp_api_for() as api:  # Use the default api to get non org specific data
-                result = api.attr_search(search_item)
-                if AttrType.DOMAIN in search_item.search_types or AttrType.URL in search_item.search_types:
-                    first_level_domain = search_item.get_first_level_domain()
-                    # Only add to the search if first_level_domain differs from search_item
-                    if first_level_domain:
-                        # limit number of results, None for all
-                        if request.form.get('limit_related_results') == 'no':
-                            # set no limit for related result
-                            related_results_limit = None
-                        else:
-                            # use config value if nothing else specified
-                            related_results_limit = app.config.get('LIMIT_RELATED_RESULTS', None)
+            # limit number of results, None for all
+            if request.form.get('limit_related_results') == 'no':
+                # set no limit for related result
+                related_results_limit = None
+            else:
+                # use config value if nothing else specified
+                related_results_limit = app.config.get('LIMIT_RELATED_RESULTS', None)
+            limit_days = app.config.get('LIMIT_DAYS_RELATED_RESULTS')
+            search_result = do_search(
+                search_item=search_item, user=user, limit_days=limit_days, limit_related=related_results_limit
+            )
 
-                        # return events after this date, None for all
-                        publish_timestamp = None
-                        if app.config.get('LIMIT_DAYS_RELATED_RESULTS') is not None:
-                            publish_timestamp = utc_now() - timedelta(days=app.config.get('LIMIT_DAYS_RELATED_RESULTS'))
-
-                        related_result = api.domain_name_search(
-                            domain_name=f'%.{first_level_domain}%',
-                            searchall=True,
-                            publish_timestamp=publish_timestamp,
-                            limit=related_results_limit,
-                        )
-
-            sightings_data = get_sightings_data(user=user, search_result=result)
             return render_template(
                 'index.jinja2',
-                result=result,
-                related_result=related_result,
+                result=search_result.result,
+                related_result=search_result.related_result,
                 related_results_limit=related_results_limit,
                 parsed_search_query=search_item,
                 parent_domain_name=parent_domain_name,
                 supported_types=SUPPORTED_TYPES,
                 misp_url=current_app.config['MISP_URL'],
-                sightings_data=sightings_data,
+                sightings_data=search_result.sightings_data,
                 user=user,
             )
 
