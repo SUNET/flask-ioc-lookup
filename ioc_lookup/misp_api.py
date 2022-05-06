@@ -42,7 +42,10 @@ class MISPApi:
     def attr_search(self, attr: Attr) -> List[Any]:
         result = []
         for typ in attr.search_types:
-            result += self.search(type=typ.value, value=attr.value).get('Attribute', [])
+            logger.debug(f'searching for: type={typ.value}, value={attr.value}')
+            res = self.search(type=typ.value, value=attr.value).get('Attribute', [])
+            logger.debug(f'got: {res}')
+            result += res
         return result
 
     def domain_name_search(
