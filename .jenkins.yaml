@@ -8,8 +8,9 @@ slack:
 docker_name: sunet/flask-ioc-lookup
 clean_workspace: true
 script:
-  - "virtualenv -p python3.7 venv"
+  - "virtualenv -p python3.8 venv"
   - ". venv/bin/activate"
   - "pip install --upgrade setuptools pip wheel"
   - "pip install --index-url https://pypi.sunet.se -r test_requirements.txt"
+  - "make typecheck"
   - "make test"
