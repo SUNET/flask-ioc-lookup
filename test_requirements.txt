@@ -271,6 +271,10 @@ tomli==2.0.1 \
     #   black
     #   mypy
     #   pytest
+typed-ast==1.5.3 \
+    --hash=sha256:27f25232e2dd0edfe1f019d6bfaaf11e86e657d9bdb7b0956db95f560cceb2b3 \
+    --hash=sha256:8831479695eadc8b5ffed06fdfb3e424adc37962a75925668deeb503f446c0a3
+    # via -r test_requirements.in
 types-pyyaml==6.0.7 \
     --hash=sha256:59480cf44595d836aaae050f35e3c39f197f3a833679ef3978d97aa9f2fb7def \
     --hash=sha256:7b273a34f32af9910cf9405728c9d2ad3afc4be63e4048091a1a73d76681fe67
