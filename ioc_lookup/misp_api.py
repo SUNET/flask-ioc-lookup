@@ -26,15 +26,23 @@ class MISPApi:
         self.pymisp = ExpandedPyMISP(api_url, api_key, verify_cert)
 
     def search(self, controller: str = 'attributes', **kwargs):
-        return self.pymisp.search(controller, **kwargs)
+        logger.debug(f'searching for: controller={controller}, kwargs={kwargs}')
+        ret = self.pymisp.search(controller, **kwargs)
+        logger.debug(f'search returned:\n{ret}')
+        return ret
 
     def searchall(self, value: str, controller: str = 'attributes') -> List[Any]:
-        result = self.pymisp.search(controller, value=value, searchall=True)
-        assert isinstance(result, dict)  # Please mypy
-        return result.get('Attribute', [])
+        logger.debug(f'searching for: controller={controller}, value={value}, searchall=True')
+        ret = self.pymisp.search(controller, value=value, searchall=True)
+        logger.debug(f'search returned:\n{ret}')
+        assert isinstance(ret, dict)  # Please mypy
+        return ret.get('Attribute', [])
 
     def search_sightings(self, context_id: str, context: str = 'attribute', source: Optional[str] = None):
-        return self.pymisp.search_sightings(context=context, context_id=context_id, source=source)
+        logger.debug(f'searching sightings for: context={context}, context_id={context_id}, source={source}')
+        ret = self.pymisp.search_sightings(context=context, context_id=context_id, source=source)
+        logger.debug(f'search sightings returned:\n{ret}')
+        return ret
 
     def org_name_id_mapping(self):
         pass
@@ -42,10 +50,7 @@ class MISPApi:
     def attr_search(self, attr: Attr) -> List[Any]:
         result = []
         for typ in attr.search_types:
-            logger.debug(f'searching for: type={typ.value}, value={attr.value}')
-            res = self.search(type=typ.value, value=attr.value).get('Attribute', [])
-            logger.debug(f'got: {res}')
-            result += res
+            result += self.search(type=typ.value, value=attr.value).get('Attribute', [])
         return result
 
     def domain_name_search(

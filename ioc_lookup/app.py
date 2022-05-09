@@ -6,16 +6,17 @@ from copy import copy
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from os import environ
-from typing import Any, Dict, List, Optional, cast
+from typing import Any, List, Optional
 
 import yaml
-from flask import Flask, abort, current_app, redirect, render_template, request, url_for
+from flask import abort, current_app, redirect, render_template, request, url_for
 from flask_caching import Cache
 from flask_limiter import Limiter
 from validators import domain
 from whitenoise import WhiteNoise
 
 from ioc_lookup.ioc_lookup_app import IOCLookupApp
+from ioc_lookup.log import init_logging
 from ioc_lookup.misp_api import AttrType, MISPApi
 from ioc_lookup.misp_attributes import SUPPORTED_TYPES, Attr
 from ioc_lookup.utils import (
@@ -47,7 +48,7 @@ app = IOCLookupApp(__name__)
 app.config.from_mapping(config)
 # Init logging
 app.config.setdefault('LOG_LEVEL', 'INFO')
-app.logger.setLevel(app.config['LOG_LEVEL'])
+init_logging(level=app.config['LOG_LEVEL'])
 # Init static files
 app.wsgi_app = WhiteNoise(app.wsgi_app, root=config.get('STATIC_FILES', 'ioc_lookup/static/'))  # type: ignore
 # Init trusted user list

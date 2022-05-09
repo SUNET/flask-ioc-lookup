@@ -128,6 +128,10 @@ limits==2.6.1 \
     # via
     #   -r requirements.txt
     #   flask-limiter
+loguru==0.6.0 \
+    --hash=sha256:066bd06758d0a513e9836fd9c6b5a75bfb3fd36841f4b996bc60b547a309d41c \
+    --hash=sha256:4e2414d534a2ab57573365b3e6d0234dfb1d84b68b7f3b948e6fb743860a77c3
+    # via -r requirements.txt
 markupsafe==2.1.1 \
     --hash=sha256:56442863ed2b06d19c37f94d999035e15ee982988920e12a5b4ba29b62ad1f77 \
     --hash=sha256:7f91197cc9e48f989d12e4e6fbc46495c446636dfc81b9ccf50bb0ec74b91d4b
@@ -247,9 +251,9 @@ requests==2.27.1 \
     # via
     #   -r requirements.txt
     #   pymisp
-rich==12.3.0 \
-    --hash=sha256:0eb63013630c6ee1237e0e395d51cb23513de6b5531235e33889e8842bdf3a6f \
-    --hash=sha256:7e8700cda776337036a712ff0495b04052fb5f957c7dfb8df997f88350044b64
+rich==12.4.1 \
+    --hash=sha256:d13c6c90c42e24eb7ce660db397e8c398edd58acb7f92a2a88a95572b838aaa4 \
+    --hash=sha256:d239001c0fb7de985e21ec9a4bb542b5150350330bbc1849f835b9cbc8923b91
     # via
     #   -r requirements.txt
     #   flask-limiter
