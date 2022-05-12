@@ -214,6 +214,8 @@ def get_sightings_data(user: User, search_result: List[Dict[str, Any]]) -> Sight
 
 @contextmanager
 def misp_api_for(user: Optional[User] = None) -> Iterator[MISPApi]:
+    if current_ioc_lookup_app.misp_apis is None:
+        raise PyMISPError('No MISP session exists')
     if user is None:
         # Use default api key as org specific api keys return org specific data
         user = User(identifier='default', is_trusted_user=False, in_trusted_org=False, org_domain='default')

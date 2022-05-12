@@ -12,6 +12,7 @@ import yaml
 from flask import abort, current_app, redirect, render_template, request, url_for
 from flask_caching import Cache
 from flask_limiter import Limiter
+from pymisp import PyMISPError
 from validators import domain
 from whitenoise import WhiteNoise
 
@@ -82,7 +83,11 @@ app.config.setdefault('SIGHTING_SOURCE_PREFIX', 'flask-ioc-lookup_')
 app.config.setdefault('SIGHTING_MIN_POSITIVE_VOTE_HOURS', 24)
 
 # Init MISP APIs
-app.misp_apis = {'default': MISPApi(app.config['MISP_URL'], app.config['MISP_KEY'], app.config['MISP_VERIFYCERT'])}
+try:
+    app.misp_apis = {'default': MISPApi(app.config['MISP_URL'], app.config['MISP_KEY'], app.config['MISP_VERIFYCERT'])}
+except PyMISPError as e:
+    app.logger.error(e)
+    app.misp_apis = None
 
 
 # Init rate limiting
@@ -101,6 +106,12 @@ def _jinja2_filter_ts(ts: str):
     dt = datetime.utcfromtimestamp(int(ts))
     fmt = '%Y-%m-%d %H:%M:%S'
     return dt.strftime(fmt)
+
+
+@app.errorhandler(PyMISPError)
+def misp_unavailable(exception):
+    app.logger.error(exception)
+    return render_template('unavailable.html')
 
 
 @dataclass
@@ -147,6 +158,10 @@ def do_search(
 def index(search_query=None):
     user = get_user()
     error = None
+
+    if app.misp_apis is None:
+        raise PyMISPError('No MISP session exists')
+
     if request.method == 'POST' or search_query is not None:
         original_search_query = request.form.get('search_query')
         parent_domain_name = None
@@ -189,6 +204,10 @@ def index(search_query=None):
 @limiter.limit(rate_limit_from_config)
 def report():
     user = get_user()
+
+    if app.misp_apis is None:
+        raise PyMISPError('No MISP session exists')
+
     if request.method == 'POST':
         reference_in = ' '.join(request.form.get('reference', '').split())  # Normalise whitespace
         try:
@@ -237,6 +256,7 @@ def report():
 @limiter.limit(rate_limit_from_config)
 def report_sighting():
     user = get_user()
+
     if not user.in_trusted_org:
         return abort(401)
 
