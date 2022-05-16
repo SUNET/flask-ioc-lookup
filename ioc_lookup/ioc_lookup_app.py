@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-from typing import Dict, List, cast, Optional
+from typing import Dict, List, Optional, cast
 
 from flask import Flask, current_app
 
