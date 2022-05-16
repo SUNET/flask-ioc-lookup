@@ -48,10 +48,8 @@ class MISPApi:
         pass
 
     def attr_search(self, attr: Attr) -> List[Any]:
-        result = []
-        for typ in attr.search_types:
-            result += self.search(type=typ.value, value=attr.value).get('Attribute', [])
-        return result
+        types = [typ.value for typ in attr.search_types]
+        return self.search(type_attribute=types, value=attr.value).get('Attribute', [])
 
     def domain_name_search(
         self,
@@ -61,7 +59,11 @@ class MISPApi:
         limit: Optional[int] = None,
     ) -> List[Any]:
         result = self.search(
-            type='domain', value=domain_name, searchall=searchall, publish_timestamp=publish_timestamp, limit=limit
+            type_attribute='domain',
+            value=domain_name,
+            searchall=searchall,
+            publish_timestamp=publish_timestamp,
+            limit=limit,
         )
         return result.get('Attribute', [])
 
