@@ -15,6 +15,10 @@ logger = logging.getLogger(__name__)
 __author__ = 'lundberg'
 
 
+class RequestException(Exception):
+    pass
+
+
 class EventCategory(Enum):
     NETWORK_ACTIVITY = 'Network activity'
     PAYLOAD_DELIVERY = 'Payload delivery'
@@ -25,15 +29,34 @@ class MISPApi:
     def __init__(self, api_url: str, api_key: str, verify_cert: bool = True):
         self.pymisp = ExpandedPyMISP(api_url, api_key, verify_cert)
 
+    @staticmethod
+    def _handle_request_error(data: Any) -> None:
+        """
+        Example error:
+        {'errors': (405, {
+                            'name': 'You do not have permission to use this functionality.',
+                            'message': 'You do not have permission to use this functionality.',
+                            'url': '/sightings/restSearch/attribute',
+                         },
+                    )
+        }
+        """
+        if isinstance(data, dict) and 'errors' in data:
+            error_code, error = data['errors']
+            message = error.get('message') or 'An unexpected error occurred'
+            raise RequestException(message)
+
     def search(self, controller: str = 'attributes', **kwargs):
         logger.debug(f'searching for: controller={controller}, kwargs={kwargs}')
         ret = self.pymisp.search(controller, **kwargs)
+        self._handle_request_error(ret)
         logger.debug(f'search returned:\n{ret}')
         return ret
 
     def searchall(self, value: str, controller: str = 'attributes') -> List[Any]:
         logger.debug(f'searching for: controller={controller}, value={value}, searchall=True')
         ret = self.pymisp.search(controller, value=value, searchall=True)
+        self._handle_request_error(ret)
         logger.debug(f'search returned:\n{ret}')
         assert isinstance(ret, dict)  # Please mypy
         return ret.get('Attribute', [])
@@ -41,6 +64,7 @@ class MISPApi:
     def search_sightings(self, context_id: str, context: str = 'attribute', source: Optional[str] = None):
         logger.debug(f'searching sightings for: context={context}, context_id={context_id}, source={source}')
         ret = self.pymisp.search_sightings(context=context, context_id=context_id, source=source)
+        self._handle_request_error(ret)
         logger.debug(f'search sightings returned:\n{ret}')
         return ret
 
@@ -68,7 +92,7 @@ class MISPApi:
         return result.get('Attribute', [])
 
     def url_search(self, url: str, searchall: bool = False) -> List[Any]:
-        result = self.search(type='url', value=url, searchall=searchall)
+        result = self.search(type_attribute='url', value=url, searchall=searchall)
         return result.get('Attribute', [])
 
     def sighting_lookup(self, attribute_id: str, source: Optional[str] = None) -> List[Any]:

@@ -18,7 +18,7 @@ from whitenoise import WhiteNoise
 
 from ioc_lookup.ioc_lookup_app import IOCLookupApp
 from ioc_lookup.log import init_logging
-from ioc_lookup.misp_api import AttrType, MISPApi
+from ioc_lookup.misp_api import AttrType, MISPApi, RequestException
 from ioc_lookup.misp_attributes import SUPPORTED_TYPES, Attr
 from ioc_lookup.utils import (
     ParseException,
@@ -81,6 +81,7 @@ if app.config.get('TRUSTED_ORGS'):
 # Init other settings
 app.config.setdefault('SIGHTING_SOURCE_PREFIX', 'flask-ioc-lookup_')
 app.config.setdefault('SIGHTING_MIN_POSITIVE_VOTE_HOURS', 24)
+app.jinja_options["autoescape"] = lambda _: True  # autoescape all templates
 
 # Init MISP APIs
 try:
@@ -111,7 +112,13 @@ def _jinja2_filter_ts(ts: str):
 @app.errorhandler(PyMISPError)
 def misp_unavailable(exception):
     app.logger.error(exception)
-    return render_template('unavailable.html')
+    return render_template('unavailable.jinja2')
+
+
+@app.errorhandler(RequestException)
+def misp_request_error(exception):
+    app.logger.error(exception)
+    return render_template('misp_request_error.jinja2', message=str(exception))
 
 
 @dataclass
@@ -121,11 +128,24 @@ class SearchResult:
     related_result: List[Any]
 
 
+@dataclass
+class SearchContext:
+    user: User
+    misp_url: str
+    supported_types: List[str]
+    parsed_search_query: Optional[Attr] = None
+    parent_domain_name: Optional[str] = None
+    related_results: bool = False
+    related_results_limit: Optional[int] = None
+    error: Optional[str] = None
+
+
 @cache.memoize()
 def do_search(
     search_item: Attr,
     user: User,
     limit_days: Optional[int] = None,
+    related_results: Optional[bool] = None,
     limit_related: Optional[int] = None,
 ):
     related_result = []
@@ -134,7 +154,7 @@ def do_search(
         if AttrType.DOMAIN in search_item.search_types or AttrType.URL in search_item.search_types:
             first_level_domain = search_item.get_first_level_domain()
             # Only add to the search if first_level_domain differs from search_item
-            if first_level_domain:
+            if first_level_domain and related_results is True:
                 # return events after this date, None for all
                 publish_timestamp = None
                 if limit_days is not None:
@@ -157,47 +177,44 @@ def do_search(
 @limiter.limit(rate_limit_from_config)
 def index(search_query=None):
     user = get_user()
-    error = None
+    search_context = SearchContext(user=user, misp_url=current_app.config['MISP_URL'], supported_types=SUPPORTED_TYPES)
 
     if app.misp_apis is None:
         raise PyMISPError('No MISP session exists')
 
     if request.method == 'POST' or search_query is not None:
         original_search_query = request.form.get('search_query')
-        parent_domain_name = None
         if not original_search_query:
             original_search_query = search_query
 
-        search_item = parse_item(original_search_query)
-        if search_item:
+        search_context.parsed_search_query = parse_item(original_search_query)
+        if search_context.parsed_search_query:
+            # toggle search for related results
+            wants_related_results = request.form.get('related_results') or request.args.get('related_results') or 'no'
+            if wants_related_results == 'yes':
+                search_context.related_results = True
             # limit number of results, None for all
-            if request.form.get('limit_related_results') == 'no':
-                # set no limit for related result
-                related_results_limit = None
-            else:
-                # use config value if nothing else specified
-                related_results_limit = app.config.get('LIMIT_RELATED_RESULTS', None)
+            if request.form.get('limit_related_results') != 'no':
+                # set limit for related result
+                search_context.related_results_limit = app.config.get('LIMIT_RELATED_RESULTS', None)
             limit_days = app.config.get('LIMIT_DAYS_RELATED_RESULTS')
             search_result = do_search(
-                search_item=search_item, user=user, limit_days=limit_days, limit_related=related_results_limit
+                search_item=search_context.parsed_search_query,
+                user=user,
+                limit_days=limit_days,
+                related_results=search_context.related_results,
+                limit_related=search_context.related_results_limit,
             )
 
             return render_template(
                 'index.jinja2',
-                result=search_result.result,
-                related_result=search_result.related_result,
-                related_results_limit=related_results_limit,
-                parsed_search_query=search_item,
-                parent_domain_name=parent_domain_name,
-                supported_types=SUPPORTED_TYPES,
-                misp_url=current_app.config['MISP_URL'],
-                sightings_data=search_result.sightings_data,
-                user=user,
+                search_result=search_result,
+                search_context=search_context,
             )
 
-        error = 'Invalid input'
+        search_context.error = 'Invalid input'
 
-    return render_template('index.jinja2', error=error, supported_types=SUPPORTED_TYPES, user=user)
+    return render_template('index.jinja2', search_context=search_context)
 
 
 @app.route('/report', methods=['GET', 'POST'])

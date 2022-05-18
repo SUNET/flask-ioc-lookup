@@ -44,9 +44,9 @@ commonmark==0.9.1 \
     # via
     #   -r requirements.txt
     #   rich
-coverage[toml]==6.3.2 \
-    --hash=sha256:03e2a7826086b91ef345ff18742ee9fc47a6839ccd517061ef8fa1976e652ce9 \
-    --hash=sha256:dd6fe30bd519694b356cbfcaca9bd5c1737cddd20778c6a581ae20dc8c04def2
+coverage[toml]==6.3.3 \
+    --hash=sha256:2781c43bffbbec2b8867376d4d61916f5e9c4cc168232528562a61d1b4b01879 \
+    --hash=sha256:7835f76a081787f0ca62a53504361b3869840a1620049b56d803a8cb3a9eeea3
     # via pytest-cov
 decorator==5.1.1 \
     --hash=sha256:637996211036b6385ef91435e4fae22989472f9d571faba8927ba8253acbc330 \
@@ -122,9 +122,9 @@ jsonschema==4.5.1 \
     # via
     #   -r requirements.txt
     #   pymisp
-limits==2.6.1 \
-    --hash=sha256:6238ca7aa9f87b8bc5a14a6f000e6e613e61f173491b6636bcc144e540de5656 \
-    --hash=sha256:c5663e88eb6b9a22a6986d2763e759929831fd1f260e44a647d8bad81b7ef257
+limits==2.6.2 \
+    --hash=sha256:bbdad324c8c950bb3bee531b298b54e28f15fad53526c7ad444dc903fd5e1ad1 \
+    --hash=sha256:d2a3d8ee73f4aeb4837f4b7a8e1c58164c402f95a01c20b50852db947709e2ad
     # via
     #   -r requirements.txt
     #   flask-limiter
@@ -182,9 +182,9 @@ pymisp==2.4.157 \
     --hash=sha256:b19d6d565972b391f90e8fe7050101b3b84f45f83214d3bf9b339a6490856cf2 \
     --hash=sha256:f3977d5f275e2917b651fc4e8a43920b8e38fbe21998e9798f24fef889a62814
     # via -r requirements.txt
-pyparsing==3.0.8 \
-    --hash=sha256:7bf433498c016c4314268d95df76c81b842a4cb2b276fa3312cfb1e1d85f6954 \
-    --hash=sha256:ef7b523f6356f763771559412c0d7134753f037822dad1b16945b7b846f7ad06
+pyparsing==3.0.9 \
+    --hash=sha256:2b020ecf7d21b687f219b71ecad3631f644a47f01403fa1d1036b0c6416d70fb \
+    --hash=sha256:5026bae9a10eeaefb61dab2f09052b9f4307d44aee4eda64b309723d8d206bbc
     # via
     #   -r requirements.txt
     #   packaging
@@ -311,9 +311,9 @@ werkzeug==2.1.2 \
     # via
     #   -r requirements.txt
     #   flask
-whitenoise==6.0.0 \
-    --hash=sha256:08c42bc535f9777eea1a599289d9433f081921f97887eaf6f559446b2a080374 \
-    --hash=sha256:5a4aff543ee860fbe40d743e556adf92ccd41b7df45697cae074afdf657056b9
+whitenoise==6.1.0 \
+    --hash=sha256:2067fe9008a3cd7d0d75f75c9240b54f5f59996ca285cbeab18fc1e89949e30d \
+    --hash=sha256:6ccc6d1ad6fb688a398ea65d97db47f018ea0be7da75e146e8f2e837a04ba590
     # via -r requirements.txt
 wrapt==1.14.1 \
     --hash=sha256:380a85cf89e0e69b7cfbe2ea9f765f004ff419f34194018a6827ac0e3edfed4d \

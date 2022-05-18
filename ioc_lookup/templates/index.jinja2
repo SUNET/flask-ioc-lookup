@@ -10,29 +10,30 @@
 <body>
 <div class="container">
     <h3 class="pt-3">IOC lookup</h3>
-    <p class="float-right">Logged in as: {{ user.identifier }}</p>
+    <p class="float-right">Logged in as: {{ search_context.user.identifier }}</p>
     <form method="post">
       <div class="form-group">
         <label for="inputQuery1">IOC entity search</label>
-        <input type="text" class="form-control {% if error %}is-invalid{% endif %}" id="inputQuery1" name="search_query" aria-describedby="searchQueryHelp" placeholder="Search for {% for typ in supported_types %}{{ typ }}{% if not loop.last %}, {% endif %}{% endfor %}">
+        <input type="text" class="form-control {% if search_context.error %}is-invalid{% endif %}" id="inputQuery1" name="search_query" aria-describedby="searchQueryHelp" placeholder="Search for {% for typ in search_context.supported_types %}{{ typ }}{% if not loop.last %}, {% endif %}{% endfor %}">
         <div class="invalid-feedback">
-          {{ error }}
+          {{ search_context.error }}
         </div>
-        <small id="searchHelp" class="form-text text-muted">Supported queries: {% for typ in supported_types %}{{ typ }}{% if not loop.last %}, {% endif %}{% endfor %}</small>
+        <label for="inputRelatedResultsToggle1">with related results</label>
+        <input type="checkbox" id="inputRelatedResultsToggle1" name="related_results" value="yes">
+        <small id="searchHelp" class="form-text text-muted">Supported queries: {% for typ in search_context.supported_types %}{{ typ }}{% if not loop.last %}, {% endif %}{% endfor %}</small>
       </div>
       <button type="submit" class="btn btn-primary">Search</button>
     </form>
-    {% if result is defined %}
-
-        <h4 class="pt-3">Result for {{ parsed_search_query.value }} ({% for typ in parsed_search_query.search_types %}{{ typ.value }}{% if not loop.last %}, {% endif %}{% endfor %})</h4>
-        {% if parent_domain_name %}
-            <small id="resultHelp" class="text-muted">No result for {{ parsed_search_query.value }} ({% for typ in parsed_search_query.search_types %}{{ typ.value }}{% if not loop.last %}, {% endif %}{% endfor %}) found, showing result for {{ parent_domain_name }}.</small>
+    {% if search_result is defined %}
+        <h4 class="pt-3">Result for {{ search_context.parsed_search_query.value }} ({% for typ in search_context.parsed_search_query.search_types %}{{ typ.value }}{% if not loop.last %}, {% endif %}{% endfor %})</h4>
+        {% if search_context.parent_domain_name %}
+            <small id="resultHelp" class="text-muted">No result for {{ search_context.parsed_search_query.value }} ({% for typ in search_context.parsed_search_query.search_types %}{{ typ.value }}{% if not loop.last %}, {% endif %}{% endfor %}) found, showing result for {{ search_context.parent_domain_name }}.</small>
         {% endif %}
         <div class="card bg-light">
             <div class="card-body">
-                {% for item in result %}
-                    {% set votes = sightings_data.votes.get(item.id) %}
-                    <pre><a href="{{ misp_url }}events/view/{{ item.event_id }}">MISP event {{ item.event_id }}</a> | {{ item.timestamp|ts }} | {{ item.value }} | {{ item.comment }} | Sightings: <a data-toggle="collapse" href="#orgSightingPositiveCollapse{{ loop.index0 }}" role="button" aria-expanded="false" aria-controls="orgSightingPositiveCollapse{{ loop.index0 }}"><span class="badge badge-pill badge-success">{{ votes.positives }}</span></a> | False-positives: <a data-toggle="collapse" href="#orgSightingNegativeCollapse{{ loop.index0 }}" role="button" aria-expanded="false" aria-controls="orgSightingNegativeCollapse{{ loop.index0 }}"><span class="badge badge-pill badge-danger">{{ votes.negatives }}</span></a></pre>
+                {% for item in search_result.result %}
+                    {% set votes = search_result.sightings_data.votes.get(item.id) %}
+                    <pre><a href="{{ search_context.misp_url }}events/view/{{ item.event_id }}">MISP event {{ item.event_id }}</a> | {{ item.timestamp|ts }} | {{ item.value }} | {{ item.comment }} | Sightings: <a data-toggle="collapse" href="#orgSightingPositiveCollapse{{ loop.index0 }}" role="button" aria-expanded="false" aria-controls="orgSightingPositiveCollapse{{ loop.index0 }}"><span class="badge badge-pill badge-success">{{ votes.positives }}</span></a> | False-positives: <a data-toggle="collapse" href="#orgSightingNegativeCollapse{{ loop.index0 }}" role="button" aria-expanded="false" aria-controls="orgSightingNegativeCollapse{{ loop.index0 }}"><span class="badge badge-pill badge-danger">{{ votes.negatives }}</span></a></pre>
                     <div class="row">
                         <div class="col">
                             <div class="collapse multi-collapse mb-3" id="orgSightingPositiveCollapse{{ loop.index0 }}">
@@ -56,49 +57,55 @@
                     <pre>No data</pre>
                 {% endfor %}
             </div>
+            <form method="post">
+                <input type="hidden" id="searchQuery3" name="search_query" value="{{ search_context.parsed_search_query.value }}">
+                <input type="hidden" id="inputRelatedResultsToggle3" name="related_results" value="yes">
+                <input type="hidden" id="inputRelatedResultsLimit3" name="limit_related_results" value="yes">
+                <button type="submit" class="btn btn-link">Search again with related results</button>
+            </form>
         </div
-        {% if result and not parent_domain_name %}>
+        {% if search_result.result and not search_context.parent_domain_name %}>
             <div class="row mt-1">
                 <div class="col">
                     <div class="btn-toolbar" role="toolbar" aria-label="Toolbar with button groups">
-                        {% if sightings_data.can_add_sighting %}
+                        {% if search_result.sightings_data.can_add_sighting %}
                             <div class="btn-group mr-2" role="group">
                                 <form class="form-inline" action="{{ url_for('report_sighting') }}" method="post">
-                                    <input type="hidden" name="search_query" value="{{ parsed_search_query.value }}" />
+                                    <input type="hidden" name="search_query" value="{{ search_context.parsed_search_query.value }}" />
                                     <input type="hidden" name="type" value="0" />
-                                    <span class="d-inline-block" tabindex="0" {% if not user.in_trusted_org %}data-toggle="tooltip" data-placement="bottom" title="Only trusted organizations can vote"{% endif %}>
-                                        <button class="btn btn-success" type="submit" {% if not user.in_trusted_org %}disabled{% endif %}>Add sighting</button>
+                                    <span class="d-inline-block" tabindex="0" {% if not search_context.user.in_trusted_org %}data-toggle="tooltip" data-placement="bottom" title="Only trusted organizations can vote"{% endif %}>
+                                        <button class="btn btn-success" type="submit" {% if not search_context.user.in_trusted_org %}disabled{% endif %}>Add sighting</button>
                                     </span>
                                 </form>
                             </div>
                         {% else %}
                             <div class="btn-group mr-2" role="group">
                                 <form class="form-inline" action="{{ url_for('remove_sighting') }}" method="post">
-                                    <input type="hidden" name="search_query" value="{{ parsed_search_query.value }}" />
+                                    <input type="hidden" name="search_query" value="{{ search_context.parsed_search_query.value }}" />
                                     <input type="hidden" name="type" value="0" />
-                                    <span class="d-inline-block" tabindex="0" {% if not user.in_trusted_org %}data-toggle="tooltip" data-placement="bottom" title="Only trusted organizations can vote"{% endif %}>
-                                        <button class="btn btn-warning" type="submit" {% if not user.in_trusted_org %}disabled{% endif %}>Remove sighting</button>
+                                    <span class="d-inline-block" tabindex="0" {% if not search_context.user.in_trusted_org %}data-toggle="tooltip" data-placement="bottom" title="Only trusted organizations can vote"{% endif %}>
+                                        <button class="btn btn-warning" type="submit" {% if not search_context.user.in_trusted_org %}disabled{% endif %}>Remove sighting</button>
                                     </span>
                                 </form>
                             </div>
                         {% endif %}
-                        {% if sightings_data.can_add_false_positive %}
+                        {% if search_result.sightings_data.can_add_false_positive %}
                             <div class="btn-group mr-2" role="group">
                                 <form class="form-inline" action="{{ url_for('report_sighting') }}" method="post">
-                                    <input type="hidden" name="search_query" value="{{ parsed_search_query.value }}" />
+                                    <input type="hidden" name="search_query" value="{{ search_context.parsed_search_query.value }}" />
                                     <input type="hidden" name="type" value="1" />
-                                    <span class="d-inline-block" {% if not user.in_trusted_org %}tabindex="0" data-toggle="tooltip" data-placement="bottom" title="Only trusted organizations can vote"{% endif %}>
-                                        <button class="btn btn-danger" type="submit" {% if not user.in_trusted_org %}disabled{% endif %}>Mark as false-positive</button>
+                                    <span class="d-inline-block" {% if not search_context.user.in_trusted_org %}tabindex="0" data-toggle="tooltip" data-placement="bottom" title="Only trusted organizations can vote"{% endif %}>
+                                        <button class="btn btn-danger" type="submit" {% if not search_context.user.in_trusted_org %}disabled{% endif %}>Mark as false-positive</button>
                                     </span>
                                 </form>
                             </div>
                         {% else %}
                             <div class="btn-group mr-2" role="group">
                                 <form class="form-inline" action="{{ url_for('remove_sighting') }}" method="post">
-                                    <input type="hidden" name="search_query" value="{{ parsed_search_query.value }}" />
+                                    <input type="hidden" name="search_query" value="{{ search_context.parsed_search_query.value }}" />
                                     <input type="hidden" name="type" value="1" />
-                                    <span class="d-inline-block" tabindex="0" {% if not user.in_trusted_org %}data-toggle="tooltip" data-placement="bottom" title="Only trusted organizations can vote"{% endif %}>
-                                        <button class="btn btn-warning" type="submit" {% if not user.in_trusted_org %}disabled{% endif %}>Remove mark as false-positive</button>
+                                    <span class="d-inline-block" tabindex="0" {% if not search_context.user.in_trusted_org %}data-toggle="tooltip" data-placement="bottom" title="Only trusted organizations can vote"{% endif %}>
+                                        <button class="btn btn-warning" type="submit" {% if not search_context.user.in_trusted_org %}disabled{% endif %}>Remove mark as false-positive</button>
                                     </span>
                                 </form>
                             </div>
@@ -107,13 +114,13 @@
                 </div>
             </div>
         {% endif %}
-        {% if parent_domain_name or not result %}
+        {% if search_context.parent_domain_name or not search_result.result %}
             <hr>
             <h6 class="mt-2">Report event</h6>
             <form class="form-inline" action="{{ url_for('report') }}" method="post">
               <div class="form-group mb-2">
-                <label for="reportQuery1" class="sr-only">{% for typ in supported_types %}{{ typ }}{% if not loop.last %}, {% endif %}{% endfor %}</label>
-                <input type="text" readonly class="form-control" id="reportQuery1" name="report_query" value="{{ parsed_search_query.value }}">
+                <label for="reportQuery1" class="sr-only">{% for typ in search_context.supported_types %}{{ typ }}{% if not loop.last %}, {% endif %}{% endfor %}</label>
+                <input type="text" readonly class="form-control" id="reportQuery1" name="report_query" value="{{ search_context.parsed_search_query.value }}">
               </div>
               <div class="form-group mx-sm-3 mb-2">
                 <label for="inputReference1" class="sr-only">Reference</label>
@@ -123,34 +130,37 @@
               <button type="submit" class="btn btn-primary mb-2">Report</button>
             </form>
         {% endif %}
-    {% endif %}
-    {% if related_result %}
-        <h5 class="pt-3">Related results</h5>
-        {% if related_results_limit %}<small>Display limit {{ related_results_limit }} event{% if related_results_limit > 1 %}s{% endif %}</small>{% endif %}
-        <div class="card bg-light">
-            <div class="card-body">
-                {% for item in related_result %}
-                    <pre><a href="{{ misp_url }}events/view/{{ item.event_id }}">MISP event {{ item.event_id }}</a> | {{ item.timestamp|ts }} | {{ item.value }} | {{ item.comment }}</pre>
-                    {% if loop.last %}
-                        <pre>Note: Event links requires access to MISP.</pre>
-                    {% endif %}
-                {% endfor %}
+
+        {% if search_result.related_result %}
+            <h5 class="pt-3">Related results</h5>
+            {% if search_context.related_results_limit %}<small>Display limit {{ search_context.related_results_limit }} event{% if search_context.related_results_limit > 1 %}s{% endif %}</small>{% endif %}
+            <div class="card bg-light">
+                <div class="card-body">
+                    {% for item in search_result.related_result %}
+                        <pre><a href="{{ search_context.misp_url }}events/view/{{ item.event_id }}">MISP event {{ item.event_id }}</a> | {{ item.timestamp|ts }} | {{ item.value }} | {{ item.comment }}</pre>
+                        {% if loop.last %}
+                            <pre>Note: Event links requires access to MISP.</pre>
+                        {% endif %}
+                    {% endfor %}
+                </div>
             </div>
-        </div>
-        <div class="btn-toolbar mt-1" role="toolbar" aria-label="Toolbar with button groups">
-            <div class="btn-group mr-2" role="group">
-                <form method="post">
-                    <input type="hidden" id="inputQuery2" name="search_query" value="{{ parsed_search_query.value }}">
-                    <input type="hidden" id="inputLimit2" name="limit_related_results" value="no">
-                    <button type="submit" class="btn btn-primary">Get all related results</button>
-                </form>
+            <div class="btn-toolbar mt-1" role="toolbar" aria-label="Toolbar with button groups">
+                <div class="btn-group mr-2" role="group">
+                    <form method="post">
+                        <input type="hidden" id="inputQuery2" name="search_query" value="{{ search_context.parsed_search_query.value }}">
+                        <input type="hidden" id="inputRelatedResultsToggle2" name="related_results" value="yes">
+                        <input type="hidden" id="inputRelatedResultsLimit2" name="limit_related_results" value="no">
+                        <button type="submit" class="btn btn-primary">Get all related results</button>
+                    </form>
+                </div>
             </div>
-        </div>
+        {% endif %}
+        <hr>
+        <p>If you want to report multiple entities, use the <a href="{{ url_for('report') }}">bulk report form</a>.</p>
     {% endif %}
-    <hr>
-    <p>If you want to report multiple entities, use the <a href="{{ url_for('report') }}">bulk report form</a>.</p>
 </div>
 <script src="{{ url_for('static', filename='js/jquery-3.5.1.slim.min.js') }}" integrity="sha384-DfXdz2htPH0lsSSs5nCTpuj/zy4C+OGpamoFVy38MVBnE+IbbVYUew+OrCXaRkfj"></script>
 <script src="{{ url_for('static', filename='js/bootstrap.bundle.js') }}" integrity="sha384-szbKYgPl66wivXHlSpJF+CKDAVckMVnlGrP25Sndhe+PwOBcXV9LlFh4MUpRhjIB"></script>
+<script src="{{ url_for('static', filename='js/scripts.js') }}" integrity="sha384-QowNnxtejGCe5H3nl97XfcF3giav9M3NMe9QVqMMVHDUHvq34uCi98U/Qi8DM8Gs"></script>
 </body>
 </html>
