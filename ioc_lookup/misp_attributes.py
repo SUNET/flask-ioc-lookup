@@ -7,12 +7,12 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import List, Optional
 
+from tld import get_fld
+
 __author__ = 'lundberg'
 
 # Friendly names for supported AttrTypes
-from tld import get_fld
-
-SUPPORTED_TYPES = ['domain name', 'URL', 'IP address', 'hash']
+SUPPORTED_TYPES = ['domain name', 'URL', 'IP address', 'hash', 'email']
 
 
 @dataclass

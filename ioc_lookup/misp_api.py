@@ -103,6 +103,7 @@ class MISPApi:
         network_activity_types = [
             AttrType.DOMAIN,
             AttrType.URL,
+            AttrType.EMAIL,
             AttrType.IP_SRC,
             AttrType.IP_DST,
             AttrType.IP_SRC_PORT,

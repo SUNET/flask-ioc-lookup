@@ -10,7 +10,7 @@ from typing import Any, Dict, Iterator, List, Optional, Set
 from flask import abort, request
 from flask_limiter.util import get_remote_address
 from pymisp import PyMISPError
-from validators import domain, ipv4, ipv6, md5, sha1, sha256, url, validator
+from validators import domain, email, ipv4, ipv6, md5, sha1, sha256, url, validator
 
 from ioc_lookup.ioc_lookup_app import current_ioc_lookup_app
 from ioc_lookup.misp_api import Attr, AttrType, MISPApi
@@ -90,7 +90,7 @@ def parse_items(items: Optional[str]) -> List[Attr]:
             item = urllib.parse.unquote_plus(item)
             if domain(item):
                 typ = AttrType.DOMAIN
-                search_types = [AttrType.DOMAIN]
+                search_types = [AttrType.DOMAIN, AttrType.HOSTNAME, AttrType.DOMAIN_IP]
                 report_types = [AttrType.DOMAIN]
             elif url(item):
                 typ = AttrType.URL
@@ -116,16 +116,26 @@ def parse_items(items: Optional[str]) -> List[Attr]:
                 report_types = [AttrType.IP_SRC]
             elif md5(item):
                 typ = AttrType.MD5
-                search_types = [AttrType.MD5, AttrType.FILENAME_MD5]
+                search_types = [AttrType.MD5, AttrType.FILENAME_MD5, AttrType.MALWARE_SAMPLE]
                 report_types = [AttrType.MD5]
             elif sha1(item):
                 typ = AttrType.SHA1
-                search_types = [AttrType.SHA1, AttrType.FILENAME_SHA1]
+                search_types = [AttrType.SHA1, AttrType.FILENAME_SHA1, AttrType.MALWARE_SAMPLE]
                 report_types = [AttrType.SHA1]
             elif sha256(item):
                 typ = AttrType.SHA256
-                search_types = [AttrType.SHA256, AttrType.FILENAME_SHA256]
+                search_types = [AttrType.SHA256, AttrType.FILENAME_SHA256, AttrType.MALWARE_SAMPLE]
                 report_types = [AttrType.SHA256]
+            elif email(item):
+                typ = AttrType.EMAIL
+                search_types = [
+                    AttrType.EMAIL,
+                    AttrType.EMAIL_SRC,
+                    AttrType.EMAIL_DST,
+                    AttrType.TARGET_EMAIL,
+                    AttrType.EPPN,
+                ]
+                report_types = [AttrType.EMAIL]
             else:
                 raise ParseException(f'Could not parse {item}')
             parsed_items.append(Attr(value=item, type=typ, search_types=search_types, report_types=report_types))
