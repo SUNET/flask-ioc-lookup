@@ -1,4 +1,4 @@
-FROM debian:testing
+FROM debian:stable
 
 MAINTAINER Johan Lundberg <lundberg@sunet.se>
 
