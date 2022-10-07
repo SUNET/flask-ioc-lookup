@@ -194,7 +194,7 @@ def get_org_domain(userid: str) -> str:
 
 def in_trusted_orgs(userid: str) -> bool:
     org_domain = get_org_domain(userid)
-    return org_domain in current_ioc_lookup_app.trusted_orgs['org_domains']
+    return org_domain in current_ioc_lookup_app.trusted_orgs.get('org_domains', [])
 
 
 def get_sightings_data(user: User, search_result: List[Dict[str, Any]]) -> SightingsData:
