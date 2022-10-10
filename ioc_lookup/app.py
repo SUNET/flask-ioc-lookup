@@ -254,7 +254,7 @@ def slack():
         
         else:
             search_context.error = 'Invalid input'
-            slackclient.chat_postMessage(channel=channel_id, text=search_context.error)
+            slackclient.chat_postMessage(channel=channel_id, text=f"{search_context.error}: {search_query}")
             return Response(), 200
 
 @app.route('/report', methods=['GET', 'POST'])
