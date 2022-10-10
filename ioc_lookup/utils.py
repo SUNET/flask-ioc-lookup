@@ -235,7 +235,7 @@ def misp_api_for(user: Optional[User] = None) -> Iterator[MISPApi]:
     # Lazy load apis per org
     if (
         user.org_domain not in current_ioc_lookup_app.misp_apis
-        and user.org_domain in current_ioc_lookup_app.trusted_orgs['org_domains']
+        and user.org_domain in current_ioc_lookup_app.trusted_orgs.get('org_domains', [])
     ):
         try:
             current_ioc_lookup_app.misp_apis[user.org_domain] = MISPApi(
