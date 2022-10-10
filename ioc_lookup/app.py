@@ -224,7 +224,7 @@ def index(search_query=None):
 
     return render_template('index.jinja2', search_context=search_context)
 
-@app.route('/slack/ioc-lookup', methods=['GET', 'POST'])
+@app.route('/slack/ioc-lookup', methods=['POST'])
 @limiter.limit(rate_limit_from_config)
 def slack():
     user = get_user()
@@ -236,26 +236,25 @@ def slack():
     if app.misp_apis is None:
         raise PyMISPError('No MISP session exists')
 
-    if request.method == 'POST':
-        original_search_query = search_query
+    original_search_query = search_query
 
-        search_context.parsed_search_query = parse_item(original_search_query)
-        if search_context.parsed_search_query:
-            limit_days = app.config.get('LIMIT_DAYS_RELATED_RESULTS')
-            search_result = do_search(
-                search_item=search_context.parsed_search_query,
-                user=user,
-                limit_days=limit_days
-            )
+    search_context.parsed_search_query = parse_item(original_search_query)
+    if search_context.parsed_search_query:
+        limit_days = app.config.get('LIMIT_DAYS_RELATED_RESULTS')
+        search_result = do_search(
+            search_item=search_context.parsed_search_query,
+            user=user,
+            limit_days=limit_days
+        )
 
-            for item in search_result.result:
-                slackclient.chat_postMessage(channel=channel_id, text=f"{search_context.misp_url}events/view/{item['event_id']}")
-            return Response(), 200
+        for item in search_result.result:
+            slackclient.chat_postMessage(channel=channel_id, text=f"{search_context.misp_url}events/view/{item['event_id']}")
+        return Response(), 200
         
-        else:
-            search_context.error = 'Invalid input'
-            slackclient.chat_postMessage(channel=channel_id, text=f"{search_context.error}: {search_query}")
-            return Response(), 200
+    else:
+        search_context.error = 'Invalid input'
+        slackclient.chat_postMessage(channel=channel_id, text=f"{search_context.error}: {search_query}")
+        return Response(), 200
 
 @app.route('/report', methods=['GET', 'POST'])
 @limiter.limit(rate_limit_from_config)
