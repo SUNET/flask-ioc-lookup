@@ -96,10 +96,10 @@ except PyMISPError as e:
 app.slackclient = slack.WebClient(app.config['SLACK_TOKEN'])
 try:
     SLACK_ID = slackclient.api_call("auth.test")['user_id']
-    app.logger.debug(f'initialized slack webclient')
+    app.logger.debug(f'Initialized slack webclient')
 except:
     SLACK_ID = None
-    app.logger.warning(f'Could not initialize slack webclient')
+    app.logger.error(f'Could not initialize slack webclient')
 
 # Init rate limiting
 limiter = Limiter(app, key_func=get_ipaddr_or_eppn)
