@@ -14,7 +14,6 @@ from flask import abort, current_app, redirect, render_template, request, url_fo
 from flask_caching import Cache
 from flask_limiter import Limiter
 from pymisp import PyMISPError
-from slackeventsapi import SlackEventAdapter
 from validators import domain
 from whitenoise import WhiteNoise
 
@@ -93,7 +92,7 @@ except PyMISPError as e:
     app.misp_apis = None
 
 # Init Slack
-app.slackclient = slack.WebClient(app.config['SLACK_TOKEN'])
+slackclient = slack.WebClient(token=app.config['SLACK_TOKEN'])
 try:
     SLACK_ID = slackclient.api_call("auth.test")['user_id']
     app.logger.debug(f'Initialized slack webclient')
@@ -216,23 +215,20 @@ def index(search_query=None):
                 limit_related=search_context.related_results_limit,
             )
 
-            return render_template(
-                'index.jinja2',
-                search_result=search_result,
-                search_context=search_context,
-            )
+            return render_template('index.jinja2', search_result=search_result, search_context=search_context)
 
         search_context.error = 'Invalid input'
 
     return render_template('index.jinja2', search_context=search_context)
 
+
 @app.route('/slack/ioc-lookup', methods=['POST'])
 @limiter.limit(rate_limit_from_config)
 def slack():
-    user = get_user()
-    data = request.form
-    channel_id = data.get('channel_id')
-    search_query = data.get('text')
+    user = get_user()  # form.get('user_name')
+    form = request.form
+    channel_id = form.get('channel_id')
+    search_query = form.get('text')
     search_context = SearchContext(user=user, misp_url=current_app.config['MISP_URL'], supported_types=SUPPORTED_TYPES)
 
     if app.misp_apis is None:
@@ -244,20 +240,18 @@ def slack():
     search_context.parsed_search_query = parse_item(original_search_query)
     if search_context.parsed_search_query:
         limit_days = app.config.get('LIMIT_DAYS_RELATED_RESULTS')
-        search_result = do_search(
-            search_item=search_context.parsed_search_query,
-            user=user,
-            limit_days=limit_days
-        )
+        search_result = do_search(search_item=search_context.parsed_search_query, user=user, limit_days=limit_days)
 
         for item in search_result.result:
-            slackclient.chat_postMessage(channel=channel_id, text=f"{search_context.misp_url}events/view/{item['event_id']}")
+            slackclient.chat_postMessage(
+                channel=channel_id, text=f"{search_context.misp_url}events/view/{item['event_id']}"
+            )
         return Response(), 200
-        
     else:
         search_context.error = 'Invalid input'
         slackclient.chat_postMessage(channel=channel_id, text=f"{search_context.error}: {search_query}")
         return Response(), 200
+
 
 @app.route('/report', methods=['GET', 'POST'])
 @limiter.limit(rate_limit_from_config)
