@@ -94,9 +94,9 @@ except PyMISPError as e:
 # Init Slack
 slackclient = slack.WebClient(token=app.config['SLACK_TOKEN'])
 try:
-    SLACK_ID = slackclient.api_call("auth.test")['user_id']
+    SLACK_ID = slackclient.api_call("auth.test").get("user_id") # type: ignore
     app.logger.debug(f'Initialized slack webclient')
-except:
+except: 
     SLACK_ID = None
     app.logger.error(f'Could not initialize slack webclient')
 
@@ -224,7 +224,7 @@ def index(search_query=None):
 
 @app.route('/slack/ioc-lookup', methods=['POST'])
 @limiter.limit(rate_limit_from_config)
-def slack():
+def slacksearch():
     user = get_user()  # form.get('user_name')
     form = request.form
     channel_id = form.get('channel_id')
