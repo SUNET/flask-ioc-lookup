@@ -234,7 +234,8 @@ def slack():
     search_context = SearchContext(user=user, misp_url=current_app.config['MISP_URL'], supported_types=SUPPORTED_TYPES)
 
     if app.misp_apis is None:
-        raise PyMISPError('No MISP session exists')
+        slackclient.chat_postMessage(channel=channel_id, text=f"No MISP session exists")
+        return Response(), 200
 
     original_search_query = search_query
 
