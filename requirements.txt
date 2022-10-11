@@ -148,7 +148,6 @@ flask==2.2.2 \
     #   -r requirements.in
     #   flask-caching
     #   flask-limiter
-    #   slackeventsapi
 flask-caching==2.0.1 \
     --hash=sha256:10df200a03f032af60077befe41779dd94898b67c82040d34e87210b71ba2638 \
     --hash=sha256:703df847cbe904d8ddffd5f5fb320e236a31cb7bebac4a93d6b1701dd16dbf37
@@ -383,10 +382,6 @@ publicsuffixlist==0.9.0 \
     --hash=sha256:ac8e738cc814ad427fec9884265b7eddf1e7ded68e53798abe02c704b4ae6a71 \
     --hash=sha256:b9a15705324751995461992b82f0633d3eedfbcd57067a274c582f57a907ac1a
     # via pymisp
-pyee==9.0.4 \
-    --hash=sha256:2770c4928abc721f46b705e6a72b0c59480c4a69c9a83ca0b00bb994f1ea4b32 \
-    --hash=sha256:9f066570130c554e9cc12de5a9d86f57c7ee47fece163bbdaa3e9c933cfbdfa5
-    # via slackeventsapi
 pygments==2.13.0 \
     --hash=sha256:56a8508ae95f98e2b9bdf93a6be5ae3f7d8af858b43e02c5a2ff083726be40c1 \
     --hash=sha256:f643f331ab57ba3c9d89212ee4a2dabc6e94f117cf4eefde99a0574720d14c42
@@ -484,10 +479,6 @@ slackclient==2.9.4 \
     --hash=sha256:a8cab9146795e23d66a03473b80dd23df8c500829dfa9d06b3e3d5aec0a2b293 \
     --hash=sha256:ab79fefb5412d0595bc01d2f195a787597f2a617b6766562932ab9ffbe5cb173
     # via -r requirements.in
-slackeventsapi==3.0.1 \
-    --hash=sha256:24f8e843a60118b08368161105bae8a998801202f85782239d48f8635e2ead58 \
-    --hash=sha256:b3b075917743a83288cb92a7cbde35f181cdecddc4392b9ab1c9ed9f001ffe2c
-    # via -r requirements.in
 tld==0.12.6 \
     --hash=sha256:266106ad9035f54cd5cce5f823911a51f697e7c58cb45bfbd6c53b4c2976ece2 \
     --hash=sha256:69fed19d26bb3f715366fb4af66fdeace896c55c052b00e8aaba3a7b63f3e7f0 \
@@ -503,7 +494,6 @@ typing-extensions==4.4.0 \
     # via
     #   flask-limiter
     #   limits
-    #   pyee
     #   rich
 urllib3==1.26.12 \
     --hash=sha256:3fa96cf423e6987997fc326ae8df396db2a8b7c667747d47ddd8ecba91f4a74e \
