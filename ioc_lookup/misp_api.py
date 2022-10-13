@@ -109,7 +109,7 @@ class MISPApi:
             AttrType.IP_SRC_PORT,
             AttrType.IP_DST_PORT,
         ]
-        payload_delivery_types = [AttrType.MD5, AttrType.SHA1, AttrType.SHA256]
+        payload_delivery_types = [AttrType.MD5, AttrType.SHA1, AttrType.SHA256, AttrType.SHA512]
 
         if any(True for t in attr.report_types if t in network_activity_types):
             return EventCategory.NETWORK_ACTIVITY
