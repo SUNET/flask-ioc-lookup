@@ -10,7 +10,7 @@ from typing import Any, Dict, Iterator, List, Optional, Set
 from flask import abort, request
 from flask_limiter.util import get_remote_address
 from pymisp import PyMISPError
-from validators import domain, email, ipv4, ipv6, md5, sha1, sha256, url, validator
+from validators import domain, email, ipv4, ipv6, md5, sha1, sha256, url, validator, sha512
 
 from ioc_lookup.ioc_lookup_app import current_ioc_lookup_app
 from ioc_lookup.misp_api import Attr, AttrType, MISPApi
@@ -126,6 +126,10 @@ def parse_items(items: Optional[str]) -> List[Attr]:
                 typ = AttrType.SHA256
                 search_types = [AttrType.SHA256, AttrType.FILENAME_SHA256, AttrType.MALWARE_SAMPLE]
                 report_types = [AttrType.SHA256]
+            elif sha512(item):
+                typ = AttrType.SHA512
+                search_types = [AttrType.SHA512, AttrType.FILENAME_SHA512, AttrType.MALWARE_SAMPLE]
+                report_types = [AttrType.SHA512]
             elif email(item):
                 typ = AttrType.EMAIL
                 search_types = [
