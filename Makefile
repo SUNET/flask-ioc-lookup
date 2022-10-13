@@ -5,7 +5,7 @@ PIPSYNC=pip-sync --index-url https://pypi.sunet.se/simple --python-executable $(
 
 reformat:
 	isort --line-width 120 --atomic --project eduid_common $(SOURCE)
-	black --line-length 120 --target-version py37 --skip-string-normalization $(SOURCE)
+	black --line-length 120 --target-version py39 $(SOURCE)
 
 typecheck:
 	mypy --ignore-missing-imports $(SOURCE)

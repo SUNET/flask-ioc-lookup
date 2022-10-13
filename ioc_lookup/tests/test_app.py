@@ -2,7 +2,7 @@
 
 from unittest import TestCase
 
-__author__ = 'lundberg'
+__author__ = "lundberg"
 
 
 class TestApp(TestCase):

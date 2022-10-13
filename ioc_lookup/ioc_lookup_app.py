@@ -5,7 +5,7 @@ from flask import Flask, current_app
 
 from ioc_lookup.misp_api import MISPApi
 
-__author__ = 'lundberg'
+__author__ = "lundberg"
 
 
 class IOCLookupApp(Flask):
