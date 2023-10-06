@@ -80,6 +80,7 @@ if app.config.get("TRUSTED_ORGS"):
     app.trusted_orgs["org_domains"] = org_domains
 
 # Init other settings
+app.config.setdefault("SIGHTINGS_ENABLED", True)
 app.config.setdefault("SIGHTING_SOURCE_PREFIX", "flask-ioc-lookup_")
 app.config.setdefault("SIGHTING_MIN_POSITIVE_VOTE_HOURS", 24)
 app.jinja_options["autoescape"] = lambda _: True  # autoescape all templates
@@ -176,7 +177,10 @@ def do_search(
                     limit=limit_related,
                 )
 
-    sightings_data = get_sightings_data(user=user, search_result=result)
+    # allow disabling of sightings
+    sightings_data = SightingsData(can_add_sighting=False, can_add_false_positive=False, votes={})
+    if current_app.config.SIGHTINGS_ENABLED:
+        sightings_data = get_sightings_data(user=user, search_result=result)
     return SearchResult(result=result, related_result=related_result, sightings_data=sightings_data)
 
 
