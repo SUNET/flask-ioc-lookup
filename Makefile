@@ -2,13 +2,14 @@ SOURCE=ioc_lookup scripts
 PYTHON=$(shell which python)
 PIPCOMPILE=pip-compile --generate-hashes --upgrade --extra-index-url https://pypi.sunet.se/simple
 PIPSYNC=pip-sync --index-url https://pypi.sunet.se/simple --python-executable $(PYTHON)
+MYPY_ARGS=--install-types --non-interactive --pretty --ignore-missing-imports --warn-unused-ignores
 
 reformat:
 	isort --line-width 120 --atomic --project eduid_common $(SOURCE)
 	black --line-length 120 --target-version py39 $(SOURCE)
 
 typecheck:
-	mypy --ignore-missing-imports $(SOURCE)
+	mypy $(MYPY_ARGS) $(SOURCE)
 
 test:
 	PYTHONPATH=$(SRCDIR) pytest -vvv -ra --log-cli-level DEBUG
