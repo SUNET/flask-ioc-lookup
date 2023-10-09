@@ -102,7 +102,7 @@ except:
     app.logger.error(f"Could not initialize slack webclient")
 
 # Init rate limiting
-limiter = Limiter(app, key_func=get_ipaddr_or_eppn)
+limiter = Limiter(app=app, key_func=get_ipaddr_or_eppn)
 
 # Init cache
 cache = Cache(app)
@@ -179,7 +179,7 @@ def do_search(
 
     # allow disabling of sightings
     sightings_data = SightingsData(can_add_sighting=False, can_add_false_positive=False, votes={})
-    if current_app.config.SIGHTINGS_ENABLED:
+    if current_app.config["SIGHTINGS_ENABLED"]:
         sightings_data = get_sightings_data(user=user, search_result=result)
     return SearchResult(result=result, related_result=related_result, sightings_data=sightings_data)
 
