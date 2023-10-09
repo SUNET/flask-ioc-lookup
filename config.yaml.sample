@@ -15,3 +15,5 @@ LOG_LEVEL: INFO
 LIMIT_DAYS_RELATED_RESULTS: 365  # days
 # limit number of related results, null for all
 LIMIT_RELATED_RESULTS: 10
+# disable sightings as a workaround with false
+SIGHTINGS_ENABLED: true
