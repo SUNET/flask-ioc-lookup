@@ -14,3 +14,4 @@ slackclient
 # needed for hash
 importlib-metadata
 importlib-resources
+pkgutil-resolve-name
