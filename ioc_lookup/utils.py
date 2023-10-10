@@ -162,10 +162,10 @@ def get_ipaddr_or_eppn() -> str:
     """
     current_ioc_lookup_app.logger.debug("REQUEST ENVIRONMENT:")
     current_ioc_lookup_app.logger.debug(request.environ)
-    identifier = request.environ.get("REMOTE_USER", None)
+    identifier = request.environ.get("HTTP_REMOTE_USER", None)
     current_ioc_lookup_app.logger.debug(f"Identifier from request environment: {identifier}")
     if not identifier:
-        current_ioc_lookup_app.logger.warning("REMOTE_USER is missing from request environment")
+        current_ioc_lookup_app.logger.warning("HTTP_REMOTE_USER is missing from request environment")
         identifier = get_remote_address()
         current_ioc_lookup_app.logger.debug(f"Identifier from get_ipaddr: {identifier}")
     return identifier
