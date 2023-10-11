@@ -219,7 +219,12 @@ def index(search_query=None):
                 limit_related=search_context.related_results_limit,
             )
 
-            return render_template("index.jinja2", search_result=search_result, search_context=search_context)
+            return render_template(
+                "index.jinja2",
+                search_result=search_result,
+                search_context=search_context,
+                sightings_enabled=current_app.config["SIGHTINGS_ENABLED"],
+            )
 
         search_context.error = "Invalid input"
 
@@ -312,6 +317,9 @@ def report():
 @app.route("/report-sighting", methods=["POST"])
 @limiter.limit(rate_limit_from_config)
 def report_sighting():
+    if current_app.config["SIGHTINGS_ENABLED"] is False:
+        return abort(401)
+
     user = get_user()
 
     if not user.in_trusted_org:
@@ -343,6 +351,9 @@ def report_sighting():
 @app.route("/remove-sighting", methods=["POST"])
 @limiter.limit(rate_limit_from_config)
 def remove_sighting():
+    if current_app.config["SIGHTINGS_ENABLED"] is False:
+        return abort(401)
+
     user = get_user()
     if not user.in_trusted_org:
         return abort(401)
