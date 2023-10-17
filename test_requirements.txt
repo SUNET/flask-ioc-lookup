@@ -4,9 +4,6 @@
 #
 #    make update_deps
 #
---index-url https://pypi.sunet.se
---extra-index-url https://pypi.sunet.se/simple
-
 aiohttp==3.8.6 \
     --hash=sha256:002f23e6ea8d3dd8d149e569fd580c999232b5fbc601c48d55398fbc2e582e8c \
     --hash=sha256:01770d8c04bd8db568abb636c1fdd4f7140b284b8b3e0b4584f070180c1e5c62 \
@@ -323,10 +320,6 @@ deprecated==1.2.14 \
     #   -r requirements.txt
     #   limits
     #   pymisp
-exceptiongroup==1.1.3 \
-    --hash=sha256:097acd85d473d75af5bb98e41b61ff7fe35efe6675e4f9370ec6ec5126d160e9 \
-    --hash=sha256:343280667a4585d195ca1cf9cef84a4e178c4b6cf2274caef9859782b567d5e3
-    # via pytest
 flask==3.0.0 \
     --hash=sha256:21128f47e4e3b9d597a3e8521a329bf56909b690fcc3fa3e477725aa81367638 \
     --hash=sha256:cfadcdb638b609361d29ec22360d6070a77d7463dcb3ab08d2c2f2f168845f58
@@ -914,14 +907,6 @@ tld==0.13 \
     --hash=sha256:93dde5e1c04bdf1844976eae440706379d21f4ab235b73c05d7483e074fb5629 \
     --hash=sha256:f75b2be080f767ed17c2338a339eaa4fab5792586319ca819119da252f9f3749
     # via -r requirements.txt
-tomli==2.0.1 \
-    --hash=sha256:939de3e7a6161af0c887ef91b7d41a53e7c5a1ca976325f429cb46ea9bc30ecc \
-    --hash=sha256:de526c12914f0c550d15924c62d72abc48d6fe7364aa87328337a31007fe8a4f
-    # via
-    #   black
-    #   coverage
-    #   mypy
-    #   pytest
 typed-ast==1.5.5 \
     --hash=sha256:042eb665ff6bf020dd2243307d11ed626306b82812aba21836096d229fdc6a10 \
     --hash=sha256:045f9930a1550d9352464e5149710d56a2aed23a2ffe78946478f7b5416f1ede \
@@ -974,13 +959,12 @@ typing-extensions==4.8.0 \
     --hash=sha256:df8e4339e9cb77357558cbdbceca33c303714cf861d1eef15e1070055ae8b7ef
     # via
     #   -r requirements.txt
-    #   black
     #   flask-limiter
     #   limits
     #   mypy
-urllib3==2.0.6 \
-    --hash=sha256:7a7c7003b000adf9e7ca2a377c9688bbc54ed41b985789ed576570342a375cd2 \
-    --hash=sha256:b19e1a85d206b56d7df1d5e683df4a7725252a964e3993648dd0fb5a1c157564
+urllib3==2.0.7 \
+    --hash=sha256:c97dfde1f7bd43a71c8d2a58e369e9b2bf692d1334ea9f9cae55add7d0dd0f84 \
+    --hash=sha256:fdb6d215c776278489906c2f8916e6e7d4f5a9b602ccbcfdf7f016fc8da0596e
     # via
     #   -r requirements.txt
     #   requests
