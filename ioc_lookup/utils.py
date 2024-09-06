@@ -160,10 +160,17 @@ def get_ipaddr_or_eppn() -> str:
     """
     Uses eppn if supplied else remote address for rate limiting
     """
+    # Get identifier by HTTP_REMOTE_USER
     current_ioc_lookup_app.logger.debug("REQUEST ENVIRONMENT:")
     current_ioc_lookup_app.logger.debug(request.environ)
     identifier = request.environ.get("HTTP_REMOTE_USER", None)
     current_ioc_lookup_app.logger.debug(f"Identifier from request environment: {identifier}")
+
+    # Get identifier by api key
+    api_key = request.headers.get("API-TOKEN", None)
+    if api_key is not None:
+        identifier = current_ioc_lookup_app.api_keys.get(api_key)
+
     if not identifier:
         current_ioc_lookup_app.logger.warning("HTTP_REMOTE_USER is missing from request environment")
         identifier = get_remote_address()

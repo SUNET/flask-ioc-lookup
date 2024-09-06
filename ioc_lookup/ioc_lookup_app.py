@@ -11,6 +11,7 @@ __author__ = "lundberg"
 class IOCLookupApp(Flask):
     trusted_users: List[str] = []
     trusted_orgs: Dict[str, Dict[str, str]] = {}
+    api_keys: Dict[str, Dict[str, str]] = {}
     misp_apis: Optional[Dict[str, MISPApi]]
 
 

@@ -59,9 +59,12 @@ app.wsgi_app = WhiteNoise(app.wsgi_app, root=config.get("STATIC_FILES", "ioc_loo
 if app.config.get("TRUSTED_USERS"):
     try:
         with open(app.config["TRUSTED_USERS"]) as f:
-            app.trusted_users = yaml.safe_load(f)["eppn"]
-        app.logger.info("Loaded trusted user list")
+            loaded_yaml = yaml.safe_load(f)
+            app.trusted_users = loaded_yaml["eppn"]
+            app.api_keys = loaded_yaml["api_keys"]
+        app.logger.info("Loaded trusted user list and api keys")
         app.logger.debug(f"Trusted user list: {app.trusted_users}")
+        app.logger.debug(f"Trusted user with api keys: {app.api_keys.values()}")
     except IOError as e:
         app.logger.warning(f"Could not initialize trusted user list: {e}")
 

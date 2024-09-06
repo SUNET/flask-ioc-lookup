@@ -2,3 +2,7 @@
 eppn:
   - a_trusted_users_eppn
   - another_trusted_users_eppn
+
+api_keys:
+  some_long_api_key: a_trusted_users_eppn
+  some_other_long_api_key: another_user_eppn@TRUSTED_ORG
