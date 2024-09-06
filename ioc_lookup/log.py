@@ -34,7 +34,7 @@ logging.getLogger().level = 0  # DEBUG
 def init_logging(
     level: str = "INFO",
     fmt=LOGURU_FORMAT,
-    colorize: bool = True,
+    colorize: bool = False,
 ) -> None:
     logger.remove()  # Remove the default handler
     logger.add(sys.stderr, format=fmt, colorize=colorize, level="ERROR", enqueue=True)

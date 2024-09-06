@@ -50,7 +50,8 @@ app = IOCLookupApp(__name__)
 app.config.from_mapping(config)
 # Init logging
 app.config.setdefault("LOG_LEVEL", "INFO")
-init_logging(level=app.config["LOG_LEVEL"])
+app.config.setdefault("LOG_COLORIZE", False)
+init_logging(level=app.config["LOG_LEVEL"], colorize=app.config["LOG_COLORIZE"])
 # Init static files
 app.wsgi_app = WhiteNoise(app.wsgi_app, root=config.get("STATIC_FILES", "ioc_lookup/static/"))  # type: ignore
 # Init trusted user list
