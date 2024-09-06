@@ -11,6 +11,7 @@ CACHE_DEFAULT_TIMEOUT: 300  # seconds
 TRUSTED_USERS: '/path/to/trusted_users.yaml'
 TRUSTED_ORGS: '/path/to/trusted_orgs.yaml'
 LOG_LEVEL: INFO
+LOG_COLORIZE: false
 # limit date span for related results, null for no limit
 LIMIT_DAYS_RELATED_RESULTS: 365  # days
 # limit number of related results, null for all
