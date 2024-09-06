@@ -15,6 +15,7 @@ from flask_caching import Cache
 from flask_limiter import Limiter
 from pymisp import PyMISPError
 from validators import domain
+from werkzeug.middleware.proxy_fix import ProxyFix
 from whitenoise import WhiteNoise
 
 from ioc_lookup.ioc_lookup_app import IOCLookupApp
@@ -107,6 +108,9 @@ limiter = Limiter(app=app, key_func=get_ipaddr_or_eppn)
 
 # Init cache
 cache = Cache(app)
+
+# Proxyfix
+app.wsgi_app = ProxyFix(app.wsgi_app)
 
 
 def rate_limit_from_config():
