@@ -16,3 +16,4 @@ importlib-metadata
 importlib-resources
 pkgutil-resolve-name
 async-timeout
+tomli
