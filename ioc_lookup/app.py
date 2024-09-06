@@ -114,7 +114,7 @@ limiter = Limiter(app=app, key_func=get_ipaddr_or_eppn)
 cache = Cache(app)
 
 # Proxyfix
-app.wsgi_app = ProxyFix(app.wsgi_app)
+app.wsgi_app = ProxyFix(app.wsgi_app)  # type: ignore[method-assign]
 
 
 def rate_limit_from_config():
@@ -250,7 +250,8 @@ def index_json(search_query: Optional[str] = None):
         raise PyMISPError("No MISP session exists")
 
     if request.method == "POST" and search_query is None:
-        search_query = request.json.get("search_query")
+        if request.json is not None:
+            search_query = request.json.get("search_query")
 
     app.logger.debug(f"Search query: {search_query}")
     if search_query is not None:
