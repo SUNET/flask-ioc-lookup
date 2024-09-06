@@ -5,8 +5,6 @@ isort
 black
 mypy
 
-# typing stubs
-types-PyYAML
-
 # needed for hash
 typed-ast
+exceptiongroup
