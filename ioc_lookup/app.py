@@ -10,7 +10,8 @@ from typing import Any, List, Optional
 
 import slack
 import yaml
-from flask import Response, abort, current_app, redirect, render_template, request, url_for
+from flask import Response, abort, current_app, jsonify, redirect, render_template, request, url_for
+from flask_accept import accept_fallback
 from flask_caching import Cache
 from flask_limiter import Limiter
 from pymisp import PyMISPError
@@ -195,6 +196,7 @@ def do_search(
 # Views
 @app.route("/", defaults={"search_query": None}, methods=["GET", "POST"])
 @app.route("/<search_query>", methods=["GET", "POST"])
+@accept_fallback
 @limiter.limit(rate_limit_from_config)
 def index(search_query=None):
     user = get_user()
@@ -239,6 +241,35 @@ def index(search_query=None):
     return render_template("index.jinja2", search_context=search_context)
 
 
+@index.support("application/json")
+def index_json(search_query: Optional[str] = None):
+    user = get_user()
+    search_context = SearchContext(user=user, misp_url=current_app.config["MISP_URL"], supported_types=SUPPORTED_TYPES)
+
+    if app.misp_apis is None:
+        raise PyMISPError("No MISP session exists")
+
+    if request.method == "POST" and search_query is None:
+        search_query = request.json.get("search_query")
+
+    app.logger.debug(f"Search query: {search_query}")
+    if search_query is not None:
+        original_search_query = request.form.get("search_query")
+        if not original_search_query:
+            original_search_query = search_query
+
+        search_context.parsed_search_query = parse_item(original_search_query)
+        if search_context.parsed_search_query is None:
+            return jsonify({"error": "Invalid input"})
+
+        try:
+            search_result = do_search(search_item=search_context.parsed_search_query, user=user)
+        except Exception as e:
+            return jsonify({"error": str(e)})
+        return jsonify({"result": search_result.result})
+    return jsonify({"error": "No search query"})
+
+
 @app.route("/slack/ioc-lookup", methods=["POST"])
 @limiter.limit(rate_limit_from_config)
 def slacksearch():
@@ -271,6 +302,7 @@ def slacksearch():
 
 
 @app.route("/report", methods=["GET", "POST"])
+@accept_fallback
 @limiter.limit(rate_limit_from_config)
 def report():
     user = get_user()
@@ -320,6 +352,63 @@ def report():
             "report.jinja2", result=result, reported_items=report_items, supported_types=SUPPORTED_TYPES, user=user
         )
     return render_template("report.jinja2", supported_types=SUPPORTED_TYPES, user=user)
+
+
+@report.support("application/json")
+def report_json():
+
+    user = get_user()
+
+    if app.misp_apis is None:
+        raise PyMISPError("No MISP session exists")
+
+    if request.method != "POST":
+        return jsonify({"error": "Invalid request method"})
+    try:
+        reference_in = " ".join(request.json.get("reference", "").split())  # Normalise whitespace
+    except Exception as ex:
+        app.logger.error(ex)
+        return jsonify({"error": "No valid input found"})
+
+    try:
+        report_items = parse_items(request.json.get("ioc", ""))
+    except ParseException as ex:
+        app.logger.error(ex)
+        return jsonify({"error": "Invalid input", "supported_types": SUPPORTED_TYPES})
+
+    if not report_items:
+        return jsonify({"error": "No valid input found"})
+
+    for item in copy(report_items):
+        if AttrType.URL in item.report_types:
+            # Also report FQDN for URLs
+            url_domain = item.get_domain()
+            if domain is not None:
+                report_items.append(Attr(value=url_domain, type=AttrType.DOMAIN, report_types=[AttrType.DOMAIN]))
+
+    tags = ["OSINT", "TLP:GREEN"]
+    publish = False
+    if user.is_trusted_user:
+        publish = True
+
+    try:
+        with misp_api_for(user) as api:
+            if report_items:
+                ret = api.add_event(
+                    attr_items=report_items,
+                    info="From flask_ioc_lookup",
+                    tags=tags,
+                    comment=f"Reported by {user.identifier}",
+                    to_ids=True,
+                    reference=reference_in,
+                    published=publish,
+                )
+                current_app.logger.debug(f"domain_names ret: {ret}")
+    except Exception as e:
+        return jsonify({"error": str(e)})
+
+    report_items = [{"type": item.type.value, "value": item.value} for item in report_items]
+    return jsonify({"report": report_items})
 
 
 @app.route("/report-sighting", methods=["POST"])
