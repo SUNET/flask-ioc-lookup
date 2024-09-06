@@ -103,7 +103,7 @@ slackclient = slack.WebClient(token=app.config["SLACK_TOKEN"])
 try:
     SLACK_ID = slackclient.api_call("auth.test").get("user_id")  # type: ignore
     app.logger.debug(f"Initialized slack webclient")
-except:
+except Exception:
     SLACK_ID = None
     app.logger.error(f"Could not initialize slack webclient")
 
