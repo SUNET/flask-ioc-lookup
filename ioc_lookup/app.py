@@ -131,13 +131,33 @@ def _jinja2_filter_ts(ts: str):
 @app.errorhandler(PyMISPError)
 def misp_unavailable(exception):
     app.logger.error(exception)
+    if "application/json" in request.accept_mimetypes.values():
+        return (
+            jsonify(
+                {
+                    "status": 500,
+                    "message": "MISP not available",
+                    "details": "MISP server is not available at the moment. Please try again later.",
+                }
+            ),
+            500,
+        )
     return render_template("unavailable.jinja2")
 
 
 @app.errorhandler(RequestException)
 def misp_request_error(exception):
     app.logger.error(exception)
+    if "application/json" in request.accept_mimetypes.values():
+        return jsonify({"status": 500, "message": "MISP request error", "details": str(exception)}), 500
     return render_template("misp_request_error.jinja2", message=str(exception))
+
+
+@app.errorhandler(401)
+def custom_401(error):
+    if "application/json" in request.accept_mimetypes.values():
+        return jsonify({"status": 401, "message": "Unauthorized"}), 401
+    return Response("401 Unauthorized", 401)
 
 
 @dataclass

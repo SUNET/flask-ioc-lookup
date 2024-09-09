@@ -170,9 +170,14 @@ def get_ipaddr_or_eppn() -> str:
     api_key = request.environ.get("HTTP_API_TOKEN", None)
     if api_key is not None:
         identifier = current_ioc_lookup_app.api_keys.get(api_key)
+        current_ioc_lookup_app.logger.debug(f"Identifier from api key: {identifier}")
 
     if not identifier:
-        current_ioc_lookup_app.logger.warning("HTTP_REMOTE_USER is missing from request environment")
+        current_ioc_lookup_app.logger.warning("HTTP_REMOTE_USER and HTTP_API_TOKEN is missing from request environment")
+        if current_ioc_lookup_app.config.get("DEBUG", False) is False:
+            abort(401)
+        # Fallback to remote address if in debug mode
+        current_ioc_lookup_app.logger.warning("Falling back to remote address in debug mode")
         identifier = get_remote_address()
         current_ioc_lookup_app.logger.debug(f"Identifier from get_ipaddr: {identifier}")
     return identifier
