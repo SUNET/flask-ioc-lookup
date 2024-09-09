@@ -167,7 +167,7 @@ def get_ipaddr_or_eppn() -> str:
     current_ioc_lookup_app.logger.debug(f"Identifier from request environment: {identifier}")
 
     # Get identifier by api key
-    api_key = request.headers.get("HTTP_API_TOKEN", None)
+    api_key = request.environ.get("HTTP_API_TOKEN", None)
     if api_key is not None:
         identifier = current_ioc_lookup_app.api_keys.get(api_key)
 
