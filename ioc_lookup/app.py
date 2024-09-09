@@ -251,11 +251,11 @@ def index_json(search_query: Optional[str] = None):
 
     if request.method == "POST" and search_query is None:
         if request.json is not None:
-            search_query = request.json.get("search_query")
+            search_query = request.json.get("search")
 
     app.logger.debug(f"Search query: {search_query}")
     if search_query is not None:
-        original_search_query = request.form.get("search_query")
+        original_search_query = request.form.get("search")
         if not original_search_query:
             original_search_query = search_query
 
@@ -366,7 +366,7 @@ def report_json():
     if request.method != "POST":
         return jsonify({"error": "Invalid request method"})
     try:
-        reference_in = " ".join(request.json.get("reference", "").split())  # Normalise whitespace
+        reference_in = " ".join(request.json.get("ref", "").split())  # Normalise whitespace
     except Exception as ex:
         app.logger.error(ex)
         return jsonify({"error": "No valid input found"})
