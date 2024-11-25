@@ -2,8 +2,7 @@
 
 import sys
 import urllib.parse
-from copy import copy
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from os import environ
 from typing import Any, List, Optional
@@ -15,24 +14,25 @@ from flask_accept import accept_fallback
 from flask_caching import Cache
 from flask_limiter import Limiter
 from pymisp import PyMISPError
-from validators import domain
 from werkzeug.middleware.proxy_fix import ProxyFix
 from whitenoise import WhiteNoise
 
 from ioc_lookup.ioc_lookup_app import IOCLookupApp
 from ioc_lookup.log import init_logging
-from ioc_lookup.misp_api import AttrType, MISPApi, RequestException
+from ioc_lookup.misp_api import TLP, AttrType, MISPApi, RequestException
 from ioc_lookup.misp_attributes import SUPPORTED_TYPES, Attr
 from ioc_lookup.utils import (
     ParseException,
+    ReportData,
     SightingsData,
+    TagParseException,
     User,
     get_ipaddr_or_eppn,
     get_sightings_data,
     get_user,
     misp_api_for,
     parse_item,
-    parse_items,
+    request_to_data,
     utc_now,
 )
 
@@ -89,6 +89,7 @@ if app.config.get("TRUSTED_ORGS"):
 app.config.setdefault("SIGHTINGS_ENABLED", True)
 app.config.setdefault("SIGHTING_SOURCE_PREFIX", "flask-ioc-lookup_")
 app.config.setdefault("SIGHTING_MIN_POSITIVE_VOTE_HOURS", 24)
+app.config.setdefault("ALLOWED_EVENT_TAGS", [])
 app.jinja_options["autoescape"] = lambda _: True  # autoescape all templates
 
 # Init MISP APIs
@@ -171,12 +172,14 @@ class SearchResult:
 class SearchContext:
     user: User
     misp_url: str
-    supported_types: List[str]
+    supported_types: list[str]
+    supported_tags: list[str]
     parsed_search_query: Optional[Attr] = None
     parent_domain_name: Optional[str] = None
     related_results: bool = False
     related_results_limit: Optional[int] = None
     error: Optional[str] = None
+    tlp: dict[str, str] = field(default_factory=TLP.to_dict)
 
 
 @cache.memoize()
@@ -213,6 +216,29 @@ def do_search(
     return SearchResult(result=result, related_result=related_result, sightings_data=sightings_data)
 
 
+def do_add_event(user: User, report_data: ReportData, extra_tags: list[str] | None = None) -> ReportData:
+    if user.is_trusted_user:
+        report_data.publish = True
+
+    if extra_tags is not None:
+        report_data.tags.extend(extra_tags)
+
+    with misp_api_for(user) as api:
+        if report_data.items:
+            ret = api.add_event(
+                attr_items=report_data.items,
+                info="From flask_ioc_lookup",
+                tags=report_data.tags,
+                comment=f"Reported by {user.identifier}",
+                to_ids=True,
+                distribution=api.tlp_to_distribution(report_data.tlp),
+                reference=report_data.reference,
+                published=report_data.publish,
+            )
+            current_app.logger.debug(f"add_event ret: {ret}")
+    return report_data
+
+
 # Views
 @app.route("/", defaults={"search_query": None}, methods=["GET", "POST"])
 @app.route("/<search_query>", methods=["GET", "POST"])
@@ -220,7 +246,12 @@ def do_search(
 @limiter.limit(rate_limit_from_config)
 def index(search_query=None):
     user = get_user()
-    search_context = SearchContext(user=user, misp_url=current_app.config["MISP_URL"], supported_types=SUPPORTED_TYPES)
+    search_context = SearchContext(
+        user=user,
+        misp_url=current_app.config["MISP_URL"],
+        supported_types=SUPPORTED_TYPES,
+        supported_tags=app.config["ALLOWED_EVENT_TAGS"],
+    )
 
     if app.misp_apis is None:
         raise PyMISPError("No MISP session exists")
@@ -264,7 +295,12 @@ def index(search_query=None):
 @index.support("application/json")
 def index_json(search_query: Optional[str] = None):
     user = get_user()
-    search_context = SearchContext(user=user, misp_url=current_app.config["MISP_URL"], supported_types=SUPPORTED_TYPES)
+    search_context = SearchContext(
+        user=user,
+        misp_url=current_app.config["MISP_URL"],
+        supported_types=SUPPORTED_TYPES,
+        supported_tags=app.config["ALLOWED_EVENT_TAGS"],
+    )
 
     if app.misp_apis is None:
         raise PyMISPError("No MISP session exists")
@@ -327,52 +363,36 @@ def slacksearch():
 @limiter.limit(rate_limit_from_config)
 def report():
     user = get_user()
+    default_args = {
+        "supported_types": SUPPORTED_TYPES,
+        "supported_tags": app.config["ALLOWED_EVENT_TAGS"],
+        "tlp": TLP.to_dict(),
+        "user": user,
+    }
 
     if app.misp_apis is None:
         raise PyMISPError("No MISP session exists")
 
     if request.method == "POST":
-        reference_in = " ".join(request.form.get("reference", "").split())  # Normalise whitespace
         try:
-            report_items = parse_items(request.form.get("report_query", ""))
-        except ParseException as ex:
+            data = request_to_data()
+            report_data = ReportData.load_data(data=data)
+        except TagParseException as ex:
             app.logger.error(ex)
-            return render_template("report.jinja2", error=f"Invalid input", supported_types=SUPPORTED_TYPES, user=user)
+            return render_template("report.jinja2", error=f"Invalid tag input", **default_args)
+        except (ValueError, ParseException) as ex:
+            app.logger.error(ex)
+            return render_template("report.jinja2", error=f"Invalid input", **default_args)
 
-        if not report_items:
+        if report_data is None:
             error = f"No valid input found"
-            return render_template("report.jinja2", error=error, supported_types=SUPPORTED_TYPES, user=user)
+            return render_template("report.jinja2", error=error, **default_args)
 
-        for item in copy(report_items):
-            if AttrType.URL in item.report_types:
-                # Also report FQDN for URLs
-                url_domain = item.get_domain()
-                if domain is not None:
-                    report_items.append(Attr(value=url_domain, type=AttrType.DOMAIN, report_types=[AttrType.DOMAIN]))
-
-        tags = ["OSINT", "TLP:GREEN"]
-        publish = False
-        if user.is_trusted_user:
-            publish = True
-
-        with misp_api_for(user) as api:
-            if report_items:
-                ret = api.add_event(
-                    attr_items=report_items,
-                    info="From flask_ioc_lookup",
-                    tags=tags,
-                    comment=f"Reported by {user.identifier}",
-                    to_ids=True,
-                    reference=reference_in,
-                    published=publish,
-                )
-                current_app.logger.debug(f"domain_names ret: {ret}")
+        report_data = do_add_event(user=user, report_data=report_data, extra_tags=["reported_by:person"])
 
         result = "success"
-        return render_template(
-            "report.jinja2", result=result, reported_items=report_items, supported_types=SUPPORTED_TYPES, user=user
-        )
-    return render_template("report.jinja2", supported_types=SUPPORTED_TYPES, user=user)
+        return render_template("report.jinja2", result=result, reported_items=report_data.items, **default_args)
+    return render_template("report.jinja2", **default_args)
 
 
 @report.support("application/json")
@@ -386,49 +406,25 @@ def report_json():
     if request.method != "POST":
         return jsonify({"error": "Invalid request method"})
     try:
-        reference_in = " ".join(request.json.get("ref", "").split())  # Normalise whitespace
-    except Exception as ex:
+        data = request_to_data()
+        report_data = ReportData.load_data(data=data)
+    except TagParseException as ex:
         app.logger.error(ex)
-        return jsonify({"error": "No valid input found"})
-
-    try:
-        report_items = parse_items(request.json.get("ioc", ""))
-    except ParseException as ex:
+        supported_tags = app.config["ALLOWED_EVENT_TAGS"]
+        return jsonify({"error": "Invalid tag input", "supported_tags": supported_tags})
+    except (ValueError, ParseException) as ex:
         app.logger.error(ex)
         return jsonify({"error": "Invalid input", "supported_types": SUPPORTED_TYPES})
 
-    if not report_items:
+    if not report_data.items:
         return jsonify({"error": "No valid input found"})
 
-    for item in copy(report_items):
-        if AttrType.URL in item.report_types:
-            # Also report FQDN for URLs
-            url_domain = item.get_domain()
-            if domain is not None:
-                report_items.append(Attr(value=url_domain, type=AttrType.DOMAIN, report_types=[AttrType.DOMAIN]))
-
-    tags = ["OSINT", "TLP:GREEN"]
-    publish = False
-    if user.is_trusted_user:
-        publish = True
-
     try:
-        with misp_api_for(user) as api:
-            if report_items:
-                ret = api.add_event(
-                    attr_items=report_items,
-                    info="From flask_ioc_lookup",
-                    tags=tags,
-                    comment=f"Reported by {user.identifier}",
-                    to_ids=True,
-                    reference=reference_in,
-                    published=publish,
-                )
-                current_app.logger.debug(f"domain_names ret: {ret}")
+        report_data = do_add_event(user=user, report_data=report_data, extra_tags=["reported_by:api"])
     except Exception as e:
         return jsonify({"error": str(e)})
 
-    report_items = [{"type": item.type.value, "value": item.value} for item in report_items]
+    report_items = [{"type": item.type.value, "value": item.value} for item in report_data.items]
     return jsonify({"report": report_items})
 
 

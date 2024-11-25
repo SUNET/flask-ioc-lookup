@@ -2,7 +2,7 @@
 
 import logging
 from datetime import date, datetime
-from enum import Enum
+from enum import StrEnum
 from typing import Any, List, Optional
 
 from pymisp import ExpandedPyMISP
@@ -19,10 +19,21 @@ class RequestException(Exception):
     pass
 
 
-class EventCategory(Enum):
+class EventCategory(StrEnum):
     NETWORK_ACTIVITY = "Network activity"
     PAYLOAD_DELIVERY = "Payload delivery"
     INTERNAL_REFERENCE = "Internal reference"
+
+
+class TLP(StrEnum):
+    CLEAR = "tlp:clear"
+    GREEN = "tlp:green"
+    AMBER = "tlp:amber"
+    AMBER_STRICT = "tlp:amber+strict"
+
+    @classmethod
+    def to_dict(cls) -> dict[str, str]:
+        return {item.name: item.value for item in cls}
 
 
 class MISPApi:
@@ -45,6 +56,20 @@ class MISPApi:
             error_code, error = data["errors"]
             message = error.get("message") or "An unexpected error occurred"
             raise RequestException(message)
+
+    @staticmethod
+    def tlp_to_distribution(tlp: TLP) -> int:
+        match tlp:
+            case TLP.AMBER_STRICT:
+                return 0
+            case TLP.AMBER:
+                return 1
+            case TLP.GREEN:
+                return 2
+            case TLP.CLEAR:
+                return 3
+            case _:
+                raise ValueError(f"Unknown TLP: {tlp}")
 
     def search(self, controller: str = "attributes", **kwargs):
         logger.debug(f"searching for: controller={controller}, kwargs={kwargs}")
@@ -125,6 +150,7 @@ class MISPApi:
         tags: List,
         comment: str,
         to_ids: bool,
+        distribution: int,
         reference: Optional[str],
         ts: Optional[int] = None,
         published: Optional[bool] = False,
@@ -157,7 +183,15 @@ class MISPApi:
             attrs.append(reference_attr)
 
         event = MISPEvent()
-        event.from_dict(info=info, Attribute=attrs, Tag=tags, date=date.today(), published=published, threat_level_id=2)
+        event.from_dict(
+            info=info,
+            Attribute=attrs,
+            Tag=tags,
+            date=date.today(),
+            published=published,
+            threat_level_id=2,
+            distribution=distribution,
+        )
         logger.debug(event)
         return self.pymisp.add_event(event)
 

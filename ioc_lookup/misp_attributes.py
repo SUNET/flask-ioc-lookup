@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import urllib.parse
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import StrEnum
 from typing import List, Optional
 
 from tld import get_fld
@@ -34,7 +34,7 @@ class Attr:
         return None
 
 
-class AttrType(Enum):
+class AttrType(StrEnum):
     AS = "AS"
     ABA_RTN = "aba-rtn"
     ANONYMISED = "anonymised"

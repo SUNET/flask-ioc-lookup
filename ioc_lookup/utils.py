@@ -3,9 +3,10 @@ __author__ = "lundberg"
 
 import urllib.parse
 from contextlib import contextmanager
+from copy import copy
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, Iterator, List, Optional, Set
+from typing import Any, Dict, Iterator, List, Optional, Self, Set
 
 from flask import abort, request
 from flask_limiter.util import get_remote_address
@@ -13,10 +14,14 @@ from pymisp import PyMISPError
 from validators import domain, email, ipv4, ipv6, md5, sha1, sha256, sha512, url, validator
 
 from ioc_lookup.ioc_lookup_app import current_ioc_lookup_app
-from ioc_lookup.misp_api import Attr, AttrType, MISPApi
+from ioc_lookup.misp_api import TLP, Attr, AttrType, MISPApi
 
 
 class ParseException(Exception):
+    pass
+
+
+class TagParseException(ParseException):
     pass
 
 
@@ -60,6 +65,40 @@ class SightingsData:
         return cls(can_add_sighting=can_add_sighting, can_add_false_positive=can_add_false_positive, votes=votes)
 
 
+@dataclass
+class ReportData:
+    reference: str
+    items: list[Attr]
+    tlp: TLP
+    tags: list[str]
+    publish: bool = False
+
+    @classmethod
+    def load_data(cls, data: dict[str, Any]) -> Optional[Self]:
+        reference = " ".join(data.get("reference", "").split())  # Normalise whitespace
+        tlp = TLP(str(data.get("tlp")))
+        report_items = parse_items(data.get("report_query", ""))
+
+        if not report_items:
+            return None
+
+        for item in copy(report_items):
+            if AttrType.URL in item.report_types:
+                # Also report FQDN for URLs
+                url_domain = item.get_domain()
+                if url_domain is not None:
+                    report_items.append(Attr(value=url_domain, type=AttrType.DOMAIN, report_types=[AttrType.DOMAIN]))
+
+        tags = [str(tlp.value)]
+        for tag in data.get("tags", []):
+            if tag in current_ioc_lookup_app.config["ALLOWED_EVENT_TAGS"]:
+                tags.append(tag)
+            else:
+                raise TagParseException(f"Tag {tag} is not allowed")
+
+        return cls(reference=reference, items=report_items, tlp=tlp, tags=tags)
+
+
 @validator
 def defanged_url(value: str) -> bool:
     """
@@ -94,6 +133,25 @@ def undefang_url(value: str) -> str:
 def get_canonical_url(uri: str) -> str:
     url_components = urllib.parse.urlsplit(uri)
     return urllib.parse.urlunsplit([url_components.scheme, url_components.netloc, url_components.path, None, None])
+
+
+def request_to_data() -> dict[str, Any]:
+    """
+    Parse the request data into a dictionary
+    """
+    if request.form:
+        # collect tag checkboxes in to a tags list
+        tags: list[str] = []
+        for key, value in request.form.items():
+            if key.startswith("tag_") and value == "on":
+                tags.append(key.removeprefix("tag_"))
+        data: dict[str, Any] = dict(request.form)
+        data["tags"] = tags
+        return data
+    elif request.json:
+        return request.json
+    else:
+        raise ParseException("No input found")
 
 
 def parse_items(items: Optional[str]) -> List[Attr]:

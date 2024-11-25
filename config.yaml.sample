@@ -18,3 +18,8 @@ LIMIT_DAYS_RELATED_RESULTS: 365  # days
 LIMIT_RELATED_RESULTS: 10
 # disable sightings as a workaround with false
 SIGHTINGS_ENABLED: true
+ALLOWED_EVENT_TAGS:
+  - "OSINT"
+  - "Phishing"
+  - "Malware"
+  - "C2"
