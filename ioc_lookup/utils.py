@@ -61,23 +61,39 @@ class SightingsData:
 
 
 @validator
-def defanged_url(value, public=False) -> bool:
+def defanged_url(value: str) -> bool:
     """
-    hxxps://defanged.url/path -> https://defanged.url/path
+    hxxps[://]defanged.url/path -> True
     """
-    if value.startswith("hxxp://") or value.startswith("hxxps://"):
-        value = value.replace("hxx", "htt", 1)  # Replace only the first occurrence of hxx with htt
-        return url(value=value, public=public)
+    defanged_protocol = ["hxxp://", "hxxp[://]", "hxxps", "hxxps[://]"]
+    for protocol in defanged_protocol:
+        if value.startswith(protocol):
+            # It looks like a defanged url, let's check if it's a valid url
+            value = undefang_url(value)
+            return url(value)
     return False
+
+
+def undefang_url(value: str) -> str:
+    value = value.replace("hxx", "htt", 1)  # Replace only the first occurrence of hxx with htt
+    value = value.replace("[", "").replace("]", "")  # this will break eventual IPv6 address urls
+    try:
+        # try to handle IPv6 address urls
+        url_components = urllib.parse.urlsplit(value)
+        netloc = url_components.netloc
+        if ipv6(netloc):
+            netloc = f"[{netloc}]"
+        value = urllib.parse.urlunsplit(
+            [url_components.scheme, netloc, url_components.path, url_components.query, url_components.fragment],
+        )
+    except ValueError:
+        pass
+    return value
 
 
 def get_canonical_url(uri: str) -> str:
     url_components = urllib.parse.urlsplit(uri)
-    # Always end url with /
-    path = url_components.path
-    if not path.endswith("/"):
-        path = f"{url_components.path}/"
-    return urllib.parse.urlunsplit([url_components.scheme, url_components.netloc, path, None, None])
+    return urllib.parse.urlunsplit([url_components.scheme, url_components.netloc, url_components.path, None, None])
 
 
 def parse_items(items: Optional[str]) -> List[Attr]:
@@ -103,7 +119,7 @@ def parse_items(items: Optional[str]) -> List[Attr]:
                 search_types = [AttrType.URL]
                 report_types = [AttrType.URL]
                 # MISP wants a correct URL, so replace hxx with htt
-                item = item.replace("hxx", "htt", 1)
+                item = get_canonical_url(undefang_url(item))
             elif ipv4(item) or ipv6(item):
                 typ = AttrType.IP_SRC
                 search_types = [
