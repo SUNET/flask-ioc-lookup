@@ -19,7 +19,7 @@ LIMIT_RELATED_RESULTS: 10
 # disable sightings as a workaround with false
 SIGHTINGS_ENABLED: true
 ALLOWED_EVENT_TAGS:
-  - "OSINT"
-  - "Phishing"
-  - "Malware"
-  - "C2"
+  - "type:OSINT"
+  - "type:Phishing"
+  - "type:Malware"
+  - "type:C2"

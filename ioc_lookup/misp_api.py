@@ -26,8 +26,8 @@ class EventCategory(StrEnum):
 
 
 class TLP(StrEnum):
+    GREEN = "tlp:green"  # first choice
     CLEAR = "tlp:clear"
-    GREEN = "tlp:green"
     AMBER = "tlp:amber"
     AMBER_STRICT = "tlp:amber+strict"
 
