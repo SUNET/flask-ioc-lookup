@@ -6,7 +6,7 @@ MYPY_ARGS=--install-types --non-interactive --pretty --ignore-missing-imports --
 
 reformat:
 	isort --line-width 120 --atomic --project eduid_common $(SOURCE)
-	black --line-length 120 --target-version py39 $(SOURCE)
+	black --line-length 120 --target-version py312 $(SOURCE)
 
 typecheck:
 	mypy $(MYPY_ARGS) $(SOURCE)
