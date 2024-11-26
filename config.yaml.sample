@@ -20,6 +20,6 @@ LIMIT_RELATED_RESULTS: 10
 SIGHTINGS_ENABLED: true
 ALLOWED_EVENT_TAGS:
   - "type:OSINT"
-  - "type:Phishing"
-  - "type:Malware"
-  - "type:C2"
+  - "Phishing"
+  - "Malware"
+  - "C2"
