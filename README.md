@@ -21,6 +21,6 @@ Report an IOC:
 curl -s -H "Accept: application/json" \
   -H "Content-Type: application/json" \
   -H "API-TOKEN: <API-key>" -X POST \
-  --data '{"ioc": "test.test", "ref": "a comment"}' \
+  --data '{"ioc": "test.test", "tlp": "tlp:green", "ref": "a comment"}' \
     https://<ENDPOINT.FQDN>/report
 ```
