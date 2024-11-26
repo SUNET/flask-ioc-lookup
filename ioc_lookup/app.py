@@ -416,7 +416,7 @@ def report_json():
         app.logger.error(ex)
         return jsonify({"error": "Invalid input", "supported_types": SUPPORTED_TYPES})
 
-    if not report_data.items:
+    if report_data is None:
         return jsonify({"error": "No valid input found"})
 
     try:
