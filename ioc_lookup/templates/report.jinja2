@@ -13,7 +13,7 @@
         <form method="post">
           <div class="form-group">
             <label for="inputQuery1">Entities for reporting</label>
-            <textarea type="text" class="form-control {% if error %}is-invalid{% endif %}" id="inputQuery1" name="report_query" aria-describedby="queryHelp" placeholder="Enter {% for typ in supported_types %}{{ typ }}{% if not loop.last %}, {% endif %}{% endfor %} to report" rows="3"></textarea>
+            <textarea type="text" class="form-control {% if error %}is-invalid{% endif %}" id="inputQuery1" name="ioc" aria-describedby="queryHelp" placeholder="Enter {% for typ in supported_types %}{{ typ }}{% if not loop.last %}, {% endif %}{% endfor %} to report" rows="3"></textarea>
             <small id="queryHelp" class="form-text text-muted">Supported types: {% for typ in supported_types %}{{ typ }}{% if not loop.last %}, {% endif %}{% endfor %}. One per line.</small>
 
             <label for="tags">Tags</label><br/>

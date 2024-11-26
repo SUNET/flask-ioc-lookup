@@ -77,7 +77,7 @@ class ReportData:
     def load_data(cls, data: dict[str, Any]) -> Optional[Self]:
         reference = " ".join(data.get("reference", "").split())  # Normalise whitespace
         tlp = TLP(str(data.get("tlp")))
-        report_items = parse_items(data.get("report_query", ""))
+        report_items = parse_items(data.get("ioc", ""))
 
         if not report_items:
             return None
