@@ -25,6 +25,10 @@ class TagParseException(ParseException):
     pass
 
 
+class EventInfoException(ParseException):
+    pass
+
+
 @dataclass
 class User:
     identifier: str
@@ -71,14 +75,19 @@ class ReportData:
     items: list[Attr]
     tlp: TLP
     tags: list[str]
+    info: str
     publish: bool = False
 
     @classmethod
     def load_data(cls, data: dict[str, Any]) -> Optional[Self]:
         reference = " ".join(data.get("reference", "").split())  # Normalise whitespace
         tlp = TLP(str(data.get("tlp")))
-        report_items = parse_items(data.get("ioc", ""))
+        info = data.get("info")
 
+        if not info:
+            raise EventInfoException("Event info is mandatory")
+
+        report_items = parse_items(data.get("ioc", ""))
         if not report_items:
             return None
 
@@ -96,7 +105,7 @@ class ReportData:
             else:
                 raise TagParseException(f"Tag {tag} is not allowed")
 
-        return cls(reference=reference, items=report_items, tlp=tlp, tags=tags)
+        return cls(reference=reference, items=report_items, tlp=tlp, info=info, tags=tags)
 
 
 @validator

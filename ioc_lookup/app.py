@@ -22,6 +22,7 @@ from ioc_lookup.log import init_logging
 from ioc_lookup.misp_api import TLP, AttrType, MISPApi, RequestException
 from ioc_lookup.misp_attributes import SUPPORTED_TYPES, Attr
 from ioc_lookup.utils import (
+    EventInfoException,
     ParseException,
     ReportData,
     SightingsData,
@@ -227,7 +228,7 @@ def do_add_event(user: User, report_data: ReportData, extra_tags: list[str] | No
         if report_data.items:
             ret = api.add_event(
                 attr_items=report_data.items,
-                info="From flask_ioc_lookup",
+                info=report_data.info,
                 tags=report_data.tags,
                 comment=f"Reported by {user.identifier}",
                 to_ids=True,
@@ -379,14 +380,18 @@ def report():
             report_data = ReportData.load_data(data=data)
         except TagParseException as ex:
             app.logger.error(ex)
-            return render_template("report.jinja2", error=f"Invalid tag input", **default_args)
+            return render_template("report.jinja2", error={"tags": "Invalid tag input"}, **default_args)
+        except EventInfoException as ex:
+            app.logger.error(ex)
+            return render_template(
+                "report.jinja2", error={"info": "Event info needs to be a short description"}, **default_args
+            )
         except (ValueError, ParseException) as ex:
             app.logger.error(ex)
-            return render_template("report.jinja2", error=f"Invalid input", **default_args)
+            return render_template("report.jinja2", error={"entities": "Could not parse entities"}, **default_args)
 
         if report_data is None:
-            error = f"No valid input found"
-            return render_template("report.jinja2", error=error, **default_args)
+            return render_template("report.jinja2", error={"form": "No valid input found"}, **default_args)
 
         report_data = do_add_event(user=user, report_data=report_data, extra_tags=["reported_by:person"])
 
@@ -412,6 +417,9 @@ def report_json():
         app.logger.error(ex)
         supported_tags = app.config["ALLOWED_EVENT_TAGS"]
         return jsonify({"error": "Invalid tag input", "supported_tags": supported_tags})
+    except EventInfoException as ex:
+        app.logger.error(ex)
+        return jsonify({"error": f"Event info needs to be a short description"})
     except (ValueError, ParseException) as ex:
         app.logger.error(ex)
         return jsonify({"error": "Invalid input", "supported_types": SUPPORTED_TYPES})
