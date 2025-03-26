@@ -1,7 +1,7 @@
 SOURCE=ioc_lookup scripts
-PYTHON=$(shell which python)
-PIPCOMPILE=pip-compile --verbose --generate-hashes --upgrade --extra-index-url https://pypi.sunet.se/simple
-PIPSYNC=pip-sync --index-url https://pypi.sunet.se/simple --python-executable $(PYTHON)
+UV=$(shell which uv)
+PIPCOMPILE=$(UV) pip compile --upgrade --generate-hashes --no-strip-extras --index-url https://pypi.sunet.se/simple --emit-index-url
+PIPSYNC=$(UV) pip sync --index-url https://pypi.sunet.se/simple
 MYPY_ARGS=--install-types --non-interactive --pretty --ignore-missing-imports --warn-unused-ignores
 
 reformat:
