@@ -419,7 +419,7 @@ def report_json():
         return jsonify({"error": "Invalid tag input", "supported_tags": supported_tags})
     except EventInfoException as ex:
         app.logger.error(ex)
-        return jsonify({"error": f"Event info needs to be a short description"})
+        return jsonify({"error": "Event info needs to be a short description"})
     except (ValueError, ParseException) as ex:
         app.logger.error(ex)
         return jsonify({"error": "Invalid input", "supported_types": SUPPORTED_TYPES})
