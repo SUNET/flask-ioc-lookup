@@ -2,3 +2,5 @@
 org_domains:
   # Organization domain name (eppn scope): api key
   "example.com": "secret"
+  # special proxy org if another api key than the default one should be used for by proxy event reports
+  "proxy": "another secret"
