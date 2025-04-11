@@ -233,7 +233,7 @@ def do_add_event(user: User, report_data: ReportData, extra_tags: list[str] | No
             in_trusted_org=user.in_trusted_org,
             org_domain="proxy",
         )
-        current_app.logger.debug("Reporting event by proxy")
+        current_app.logger.info(f"Reporting event by proxy for user {user}")
 
     if extra_tags is not None:
         report_data.tags.extend(extra_tags)
