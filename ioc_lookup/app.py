@@ -96,6 +96,9 @@ app.jinja_options["autoescape"] = lambda _: True  # autoescape all templates
 # Init MISP APIs
 try:
     app.misp_apis = {"default": MISPApi(app.config["MISP_URL"], app.config["MISP_KEY"], app.config["MISP_VERIFYCERT"])}
+    # Set proxy api to default if not explicitly set in config trusted orgs
+    if "proxy" not in app.trusted_orgs:
+        app.misp_apis["proxy"] = app.misp_apis["default"]
 except PyMISPError as e:
     app.logger.error(e)
     app.misp_apis = None
@@ -221,10 +224,21 @@ def do_add_event(user: User, report_data: ReportData, extra_tags: list[str] | No
     if user.is_trusted_user:
         report_data.publish = True
 
+    report_user = user
+    if report_data.by_proxy is True:
+        # replace identifying parts when reporting through proxy
+        report_user = User(
+            identifier="proxy",
+            is_trusted_user=user.is_trusted_user,
+            in_trusted_org=user.in_trusted_org,
+            org_domain="proxy",
+        )
+        current_app.logger.debug("Reporting event by proxy")
+
     if extra_tags is not None:
         report_data.tags.extend(extra_tags)
 
-    with misp_api_for(user) as api:
+    with misp_api_for(report_user) as api:
         if report_data.items:
             ret = api.add_event(
                 attr_items=report_data.items,

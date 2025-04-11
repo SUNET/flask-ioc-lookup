@@ -77,12 +77,14 @@ class ReportData:
     tags: list[str]
     info: str
     publish: bool = False
+    by_proxy: bool = False
 
     @classmethod
     def load_data(cls, data: dict[str, Any]) -> Optional[Self]:
         reference = " ".join(data.get("reference", "").split())  # Normalise whitespace
         tlp = TLP(str(data.get("tlp")))
         info = data.get("info")
+        by_proxy = data.get("by_proxy", False)
 
         if not info:
             raise EventInfoException("Event info is mandatory")
@@ -105,7 +107,7 @@ class ReportData:
             else:
                 raise TagParseException(f"Tag {tag} is not allowed")
 
-        return cls(reference=reference, items=report_items, tlp=tlp, info=info, tags=tags)
+        return cls(reference=reference, items=report_items, tlp=tlp, info=info, tags=tags, by_proxy=by_proxy)
 
 
 @validator
@@ -149,13 +151,18 @@ def request_to_data() -> dict[str, Any]:
     Parse the request data into a dictionary
     """
     if request.form:
+        data: dict[str, Any] = dict(request.form)
         # collect tag checkboxes in to a tags list
         tags: list[str] = []
+        # set by_proxy to True if checkbox is checked
+        by_proxy = False
         for key, value in request.form.items():
             if key.startswith("tag_") and value == "on":
                 tags.append(key.removeprefix("tag_"))
-        data: dict[str, Any] = dict(request.form)
+            if key == "by_proxy" and value == "on":
+                by_proxy = True
         data["tags"] = tags
+        data["by_proxy"] = by_proxy
         return data
     elif request.json:
         return request.json
