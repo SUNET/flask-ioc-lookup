@@ -3,7 +3,7 @@
 import sys
 import urllib.parse
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from os import environ
 from typing import Any, List, Optional
 
@@ -122,19 +122,19 @@ cache = Cache(app)
 app.wsgi_app = ProxyFix(app.wsgi_app)  # type: ignore[method-assign]
 
 
-def rate_limit_from_config():
+def rate_limit_from_config() -> str:
     return app.config.get("REQUEST_RATE_LIMIT", "1/second")
 
 
 @app.template_filter("ts")
-def _jinja2_filter_ts(ts: str):
-    dt = datetime.utcfromtimestamp(int(ts))
+def _jinja2_filter_ts(ts: str) -> str:
+    dt = datetime.fromtimestamp(int(ts), tz=timezone.utc)
     fmt = "%Y-%m-%d %H:%M:%S"
     return dt.strftime(fmt)
 
 
 @app.errorhandler(PyMISPError)
-def misp_unavailable(exception):
+def misp_unavailable(exception: Exception):
     app.logger.error(exception)
     if "application/json" in request.accept_mimetypes.values():
         return (
@@ -151,7 +151,7 @@ def misp_unavailable(exception):
 
 
 @app.errorhandler(RequestException)
-def misp_request_error(exception):
+def misp_request_error(exception: Exception):
     app.logger.error(exception)
     if "application/json" in request.accept_mimetypes.values():
         return jsonify({"status": 500, "message": "MISP request error", "details": str(exception)}), 500
@@ -159,7 +159,7 @@ def misp_request_error(exception):
 
 
 @app.errorhandler(401)
-def custom_401(error):
+def custom_401(error: Exception):
     if "application/json" in request.accept_mimetypes.values():
         return jsonify({"status": 401, "message": "Unauthorized"}), 401
     return Response("401 Unauthorized", 401)
@@ -259,7 +259,7 @@ def do_add_event(user: User, report_data: ReportData, extra_tags: list[str] | No
 @app.route("/<search_query>", methods=["GET", "POST"])
 @accept_fallback
 @limiter.limit(rate_limit_from_config)
-def index(search_query=None):
+def index(search_query: str | None = None):
     user = get_user()
     search_context = SearchContext(
         user=user,
@@ -272,7 +272,7 @@ def index(search_query=None):
         raise PyMISPError("No MISP session exists")
 
     if request.method == "POST" or search_query is not None:
-        original_search_query = request.form.get("search_query")
+        original_search_query: str | None = request.form.get("search_query")
         if not original_search_query:
             original_search_query = search_query
 
