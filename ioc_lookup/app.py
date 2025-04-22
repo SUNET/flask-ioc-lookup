@@ -98,6 +98,7 @@ try:
     app.misp_apis = {"default": MISPApi(app.config["MISP_URL"], app.config["MISP_KEY"], app.config["MISP_VERIFYCERT"])}
     # Set proxy api to default if not explicitly set in config trusted orgs
     if "proxy" not in app.trusted_orgs:
+        app.logger.info("proxy not set in trusted orgs config, using default as proxy org")
         app.misp_apis["proxy"] = app.misp_apis["default"]
 except PyMISPError as e:
     app.logger.error(e)
