@@ -244,7 +244,7 @@ def do_add_event(user: User, report_data: ReportData, extra_tags: list[str] | No
                 attr_items=report_data.items,
                 info=report_data.info,
                 tags=report_data.tags,
-                comment=f"Reported by {user.identifier}",
+                comment=f"Reported by {report_user.identifier}",
                 to_ids=True,
                 distribution=api.tlp_to_distribution(report_data.tlp),
                 reference=report_data.reference,
