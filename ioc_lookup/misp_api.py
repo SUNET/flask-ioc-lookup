@@ -37,8 +37,12 @@ class TLP(StrEnum):
 
 
 class MISPApi:
-    def __init__(self, api_url: str, api_key: str, verify_cert: bool = True):
+    def __init__(self, name: str, api_url: str, api_key: str, verify_cert: bool = True):
+        self.name = name
         self.pymisp = ExpandedPyMISP(api_url, api_key, verify_cert)
+
+    def __repr__(self):
+        return f"MISPApi({self.name}, {self.pymisp})"
 
     @staticmethod
     def _handle_request_error(data: Any) -> None:

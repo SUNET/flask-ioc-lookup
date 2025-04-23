@@ -341,13 +341,14 @@ def misp_api_for(user: Optional[User] = None) -> Iterator[MISPApi]:
     # Lazy load apis per org
     if (
         user.org_domain not in current_ioc_lookup_app.misp_apis
-        and user.org_domain in current_ioc_lookup_app.trusted_orgs.get("org_domains", [])
+        and user.org_domain in current_ioc_lookup_app.trusted_orgs
     ):
         try:
             current_ioc_lookup_app.misp_apis[user.org_domain] = MISPApi(
-                current_ioc_lookup_app.config["MISP_URL"],
-                current_ioc_lookup_app.trusted_orgs["org_domains"][user.org_domain],
-                current_ioc_lookup_app.config["MISP_VERIFYCERT"],
+                name=current_ioc_lookup_app.trusted_orgs[user.org_domain].domain,
+                api_url=current_ioc_lookup_app.config["MISP_URL"],
+                api_key=current_ioc_lookup_app.trusted_orgs[user.org_domain].misp_api_key,
+                verify_cert=current_ioc_lookup_app.config["MISP_VERIFYCERT"],
             )
             current_ioc_lookup_app.logger.info(f"Loaded api for {user.org_domain}")
         except PyMISPError:
@@ -357,11 +358,12 @@ def misp_api_for(user: Optional[User] = None) -> Iterator[MISPApi]:
 
     api = current_ioc_lookup_app.misp_apis.get(user.org_domain)
     if api is None:
+        current_ioc_lookup_app.logger.debug(f"Could not find domain {user.org_domain} for user {user} in TRUSTED_ORGS")
         current_ioc_lookup_app.logger.debug("Using default api")
-        yield current_ioc_lookup_app.misp_apis["default"]
+        api = current_ioc_lookup_app.misp_apis["default"]
     else:
-        current_ioc_lookup_app.logger.debug(f"Using {user.org_domain} api")
-        yield api
+        current_ioc_lookup_app.logger.debug(f"Using {user.org_domain} api: {api}")
+    yield api
 
 
 def utc_now() -> datetime:

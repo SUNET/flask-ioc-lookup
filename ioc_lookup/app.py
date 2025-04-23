@@ -17,7 +17,7 @@ from pymisp import PyMISPError
 from werkzeug.middleware.proxy_fix import ProxyFix
 from whitenoise import WhiteNoise
 
-from ioc_lookup.ioc_lookup_app import IOCLookupApp
+from ioc_lookup.ioc_lookup_app import IOCLookupApp, TrustedOrg
 from ioc_lookup.log import init_logging
 from ioc_lookup.misp_api import TLP, AttrType, MISPApi, RequestException
 from ioc_lookup.misp_attributes import SUPPORTED_TYPES, Attr
@@ -74,17 +74,13 @@ if app.config.get("TRUSTED_USERS"):
 if app.config.get("TRUSTED_ORGS"):
     try:
         with open(app.config["TRUSTED_ORGS"]) as f:
-            app.trusted_orgs = yaml.safe_load(f)
+            trusted_orgs = yaml.safe_load(f)
+        for key, value in trusted_orgs["org_domains"].items():
+            app.trusted_orgs[key.lower()] = TrustedOrg(domain=key, misp_api_key=value)
         app.logger.info("Loaded trusted org list")
         app.logger.debug(f"Trusted org config: {app.trusted_orgs}")
-    except IOError as e:
+    except (IOError, KeyError) as e:
         app.logger.warning(f"Could not initialize trusted org mapping: {e}")
-
-    # Make all orgs lower case
-    org_domains = {}
-    for key, value in app.trusted_orgs["org_domains"].items():
-        org_domains[key.lower()] = value
-    app.trusted_orgs["org_domains"] = org_domains
 
 # Init other settings
 app.config.setdefault("SIGHTINGS_ENABLED", True)
@@ -95,7 +91,14 @@ app.jinja_options["autoescape"] = lambda _: True  # autoescape all templates
 
 # Init MISP APIs
 try:
-    app.misp_apis = {"default": MISPApi(app.config["MISP_URL"], app.config["MISP_KEY"], app.config["MISP_VERIFYCERT"])}
+    app.misp_apis = {
+        "default": MISPApi(
+            name="default",
+            api_url=app.config["MISP_URL"],
+            api_key=app.config["MISP_KEY"],
+            verify_cert=app.config["MISP_VERIFYCERT"],
+        )
+    }
     # Set proxy api to default if not explicitly set in config trusted orgs
     if "proxy" not in app.trusted_orgs:
         app.logger.info("proxy not set in trusted orgs config, using default as proxy org")
