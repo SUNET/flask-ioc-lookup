@@ -54,7 +54,15 @@
           </div>
           {% if error %}
             {% for key, value in error.items() %}
-              <p class="alert-danger">{{ value }}</p>
+                {% if key == 'parse_errors' %}
+                    <p class="alert-danger">
+                    {% for x in value %}
+                        Line {{ x.line }} - {{ x.message }}<br />
+                    {% endfor %}
+                    </p>
+                {% else %}
+                    <p class="alert-danger">{{ value }}</p>
+                {% endif %}
             {% endfor %}
           {% endif %}
           <button type="submit" class="btn btn-primary">Submit</button>

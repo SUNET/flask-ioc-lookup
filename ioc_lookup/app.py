@@ -21,9 +21,9 @@ from ioc_lookup.ioc_lookup_app import IOCLookupApp, TrustedOrg
 from ioc_lookup.log import init_logging
 from ioc_lookup.misp_api import TLP, AttrType, MISPApi, RequestException
 from ioc_lookup.misp_attributes import SUPPORTED_TYPES, Attr
+from ioc_lookup.parse import ParseException, parse_item
 from ioc_lookup.utils import (
     EventInfoException,
-    ParseException,
     ReportData,
     SightingsData,
     TagParseException,
@@ -32,7 +32,6 @@ from ioc_lookup.utils import (
     get_sightings_data,
     get_user,
     misp_api_for,
-    parse_item,
     request_to_data,
     utc_now,
 )
@@ -404,7 +403,10 @@ def report():
             return render_template(
                 "report.jinja2", error={"info": "Event info needs to be a short description"}, **default_args
             )
-        except (ValueError, ParseException) as ex:
+        except ParseException as ex:
+            app.logger.error(ex)
+            return render_template("report.jinja2", error={"parse_errors": ex.errors}, **default_args)
+        except ValueError as ex:
             app.logger.error(ex)
             return render_template("report.jinja2", error={"entities": "Could not parse entities"}, **default_args)
 
@@ -438,7 +440,10 @@ def report_json():
     except EventInfoException as ex:
         app.logger.error(ex)
         return jsonify({"error": "Event info needs to be a short description"})
-    except (ValueError, ParseException) as ex:
+    except ParseException as ex:
+        app.logger.error(ex)
+        return jsonify({"error": "Invalid input", "errors": ex.errors, "supported_types": SUPPORTED_TYPES})
+    except ValueError as ex:
         app.logger.error(ex)
         return jsonify({"error": "Invalid input", "supported_types": SUPPORTED_TYPES})
 
