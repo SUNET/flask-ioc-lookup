@@ -1,11 +1,9 @@
-# -*- coding: utf-8 -*-
-
 import sys
 import urllib.parse
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from os import environ
-from typing import Any, List, Optional
+from typing import Any
 
 import slack
 import yaml
@@ -14,6 +12,7 @@ from flask_accept import accept_fallback
 from flask_caching import Cache
 from flask_limiter import Limiter
 from pymisp import PyMISPError
+from werkzeug import Response as WerkzeugResponse
 from werkzeug.middleware.proxy_fix import ProxyFix
 from whitenoise import WhiteNoise
 
@@ -21,9 +20,9 @@ from ioc_lookup.ioc_lookup_app import IOCLookupApp, TrustedOrg
 from ioc_lookup.log import init_logging
 from ioc_lookup.misp_api import TLP, AttrType, MISPApi, RequestException
 from ioc_lookup.misp_attributes import SUPPORTED_TYPES, Attr
+from ioc_lookup.parse import ParseException, parse_item
 from ioc_lookup.utils import (
     EventInfoException,
-    ParseException,
     ReportData,
     SightingsData,
     TagParseException,
@@ -32,7 +31,6 @@ from ioc_lookup.utils import (
     get_sightings_data,
     get_user,
     misp_api_for,
-    parse_item,
     request_to_data,
     utc_now,
 )
@@ -56,7 +54,7 @@ app.config.setdefault("LOG_LEVEL", "INFO")
 app.config.setdefault("LOG_COLORIZE", False)
 init_logging(level=app.config["LOG_LEVEL"], colorize=app.config["LOG_COLORIZE"])
 # Init static files
-app.wsgi_app = WhiteNoise(app.wsgi_app, root=config.get("STATIC_FILES", "ioc_lookup/static/"))  # type: ignore
+app.wsgi_app = WhiteNoise(app.wsgi_app, root=config.get("STATIC_FILES", "ioc_lookup/static/"))  # type: ignore[method-assign]
 # Init trusted user list
 if app.config.get("TRUSTED_USERS"):
     try:
@@ -67,7 +65,7 @@ if app.config.get("TRUSTED_USERS"):
         app.logger.info("Loaded trusted user list and api keys")
         app.logger.debug(f"Trusted user list: {app.trusted_users}")
         app.logger.debug(f"Trusted user with api keys: {app.api_keys.values()}")
-    except IOError as e:
+    except OSError as e:
         app.logger.warning(f"Could not initialize trusted user list: {e}")
 
 # Init trusted orgs
@@ -79,7 +77,7 @@ if app.config.get("TRUSTED_ORGS"):
             app.trusted_orgs[key.lower()] = TrustedOrg(domain=key, misp_api_key=value)
         app.logger.info("Loaded trusted org list")
         app.logger.debug(f"Trusted org config: {app.trusted_orgs}")
-    except (IOError, KeyError) as e:
+    except (OSError, KeyError) as e:
         app.logger.warning(f"Could not initialize trusted org mapping: {e}")
 
 # Init other settings
@@ -110,11 +108,11 @@ except PyMISPError as e:
 # Init Slack
 slackclient = slack.WebClient(token=app.config["SLACK_TOKEN"])
 try:
-    SLACK_ID = slackclient.api_call("auth.test").get("user_id")  # type: ignore
-    app.logger.debug(f"Initialized slack webclient")
+    SLACK_ID = slackclient.api_call("auth.test").get("user_id")  # type: ignore[union-attr]
+    app.logger.debug("Initialized slack webclient")
 except Exception:
     SLACK_ID = None
-    app.logger.error(f"Could not initialize slack webclient")
+    app.logger.error("Could not initialize slack webclient")
 
 # Init rate limiting
 limiter = Limiter(app=app, key_func=get_ipaddr_or_eppn)
@@ -132,13 +130,13 @@ def rate_limit_from_config() -> str:
 
 @app.template_filter("ts")
 def _jinja2_filter_ts(ts: str) -> str:
-    dt = datetime.fromtimestamp(int(ts), tz=timezone.utc)
+    dt = datetime.fromtimestamp(int(ts), tz=UTC)
     fmt = "%Y-%m-%d %H:%M:%S"
     return dt.strftime(fmt)
 
 
 @app.errorhandler(PyMISPError)
-def misp_unavailable(exception: Exception):
+def misp_unavailable(exception: Exception) -> str | tuple[Response, int]:
     app.logger.error(exception)
     if "application/json" in request.accept_mimetypes.values():
         return (
@@ -155,7 +153,7 @@ def misp_unavailable(exception: Exception):
 
 
 @app.errorhandler(RequestException)
-def misp_request_error(exception: Exception):
+def misp_request_error(exception: Exception) -> tuple[Response, int] | str:
     app.logger.error(exception)
     if "application/json" in request.accept_mimetypes.values():
         return jsonify({"status": 500, "message": "MISP request error", "details": str(exception)}), 500
@@ -163,7 +161,7 @@ def misp_request_error(exception: Exception):
 
 
 @app.errorhandler(401)
-def custom_401(error: Exception):
+def custom_401(error: Exception) -> Response | tuple[Response, int]:
     if "application/json" in request.accept_mimetypes.values():
         return jsonify({"status": 401, "message": "Unauthorized"}), 401
     return Response("401 Unauthorized", 401)
@@ -171,9 +169,9 @@ def custom_401(error: Exception):
 
 @dataclass
 class SearchResult:
-    result: List[Any]
+    result: list[Any]
     sightings_data: SightingsData
-    related_result: List[Any]
+    related_result: list[Any]
 
 
 @dataclass
@@ -182,11 +180,11 @@ class SearchContext:
     misp_url: str
     supported_types: list[str]
     supported_tags: list[str]
-    parsed_search_query: Optional[Attr] = None
-    parent_domain_name: Optional[str] = None
+    parsed_search_query: Attr | None = None
+    parent_domain_name: str | None = None
     related_results: bool = False
-    related_results_limit: Optional[int] = None
-    error: Optional[str] = None
+    related_results_limit: int | None = None
+    error: str | None = None
     tlp: dict[str, str] = field(default_factory=TLP.to_dict)
 
 
@@ -194,10 +192,10 @@ class SearchContext:
 def do_search(
     search_item: Attr,
     user: User,
-    limit_days: Optional[int] = None,
-    related_results: Optional[bool] = None,
-    limit_related: Optional[int] = None,
-):
+    limit_days: int | None = None,
+    related_results: bool | None = None,
+    limit_related: int | None = None,
+) -> SearchResult:
     related_result = []
     with misp_api_for() as api:  # Use the default api to get non org specific data
         result = api.attr_search(search_item)
@@ -263,7 +261,7 @@ def do_add_event(user: User, report_data: ReportData, extra_tags: list[str] | No
 @app.route("/<search_query>", methods=["GET", "POST"])
 @accept_fallback
 @limiter.limit(rate_limit_from_config)
-def index(search_query: str | None = None):
+def index(search_query: str | None = None) -> str:
     user = get_user()
     search_context = SearchContext(
         user=user,
@@ -312,7 +310,7 @@ def index(search_query: str | None = None):
 
 
 @index.support("application/json")
-def index_json(search_query: Optional[str] = None):
+def index_json(search_query: str | None = None) -> Response:
     user = get_user()
     search_context = SearchContext(
         user=user,
@@ -348,15 +346,21 @@ def index_json(search_query: Optional[str] = None):
 
 @app.route("/slack/ioc-lookup", methods=["POST"])
 @limiter.limit(rate_limit_from_config)
-def slacksearch():
+def slacksearch() -> tuple[Response, int]:
     user = get_user()  # form.get('user_name')
     form = request.form
     channel_id = form.get("channel_id")
+    assert channel_id is not None
     search_query = form.get("text")
-    search_context = SearchContext(user=user, misp_url=current_app.config["MISP_URL"], supported_types=SUPPORTED_TYPES)
+    search_context = SearchContext(
+        user=user,
+        misp_url=current_app.config["MISP_URL"],
+        supported_types=SUPPORTED_TYPES,
+        supported_tags=app.config["ALLOWED_EVENT_TAGS"],
+    )
 
     if app.misp_apis is None:
-        slackclient.chat_postMessage(channel=channel_id, text=f"No MISP session exists")
+        slackclient.chat_postMessage(channel=channel_id, text="No MISP session exists")
         return Response(), 200
 
     original_search_query = search_query
@@ -380,7 +384,7 @@ def slacksearch():
 @app.route("/report", methods=["GET", "POST"])
 @accept_fallback
 @limiter.limit(rate_limit_from_config)
-def report():
+def report() -> str:
     user = get_user()
     default_args = {
         "supported_types": SUPPORTED_TYPES,
@@ -404,7 +408,10 @@ def report():
             return render_template(
                 "report.jinja2", error={"info": "Event info needs to be a short description"}, **default_args
             )
-        except (ValueError, ParseException) as ex:
+        except ParseException as ex:
+            app.logger.error(ex)
+            return render_template("report.jinja2", error={"parse_errors": ex.errors}, **default_args)
+        except ValueError as ex:
             app.logger.error(ex)
             return render_template("report.jinja2", error={"entities": "Could not parse entities"}, **default_args)
 
@@ -419,8 +426,7 @@ def report():
 
 
 @report.support("application/json")
-def report_json():
-
+def report_json() -> Response:
     user = get_user()
 
     if app.misp_apis is None:
@@ -438,7 +444,10 @@ def report_json():
     except EventInfoException as ex:
         app.logger.error(ex)
         return jsonify({"error": "Event info needs to be a short description"})
-    except (ValueError, ParseException) as ex:
+    except ParseException as ex:
+        app.logger.error(ex)
+        return jsonify({"error": "Invalid input", "errors": ex.errors, "supported_types": SUPPORTED_TYPES})
+    except ValueError as ex:
         app.logger.error(ex)
         return jsonify({"error": "Invalid input", "supported_types": SUPPORTED_TYPES})
 
@@ -456,7 +465,7 @@ def report_json():
 
 @app.route("/report-sighting", methods=["POST"])
 @limiter.limit(rate_limit_from_config)
-def report_sighting():
+def report_sighting() -> WerkzeugResponse:
     if current_app.config["SIGHTINGS_ENABLED"] is False:
         return abort(401)
 
@@ -483,14 +492,14 @@ def report_sighting():
             api.add_sighting(
                 attr=sighting_in,
                 sighting_type=type_in,
-                source=f'{app.config["SIGHTING_SOURCE_PREFIX"]}{user.org_domain}',
+                source=f"{app.config['SIGHTING_SOURCE_PREFIX']}{user.org_domain}",
             )
     return redirect(url_for("index", search_query=urllib.parse.quote_plus(sighting_in.value)))
 
 
 @app.route("/remove-sighting", methods=["POST"])
 @limiter.limit(rate_limit_from_config)
-def remove_sighting():
+def remove_sighting() -> WerkzeugResponse:
     if current_app.config["SIGHTINGS_ENABLED"] is False:
         return abort(401)
 
@@ -523,7 +532,7 @@ def remove_sighting():
             sighting_type=type_in,
             date_from=date_from,
             date_to=date_to,
-            source=f'{app.config["SIGHTING_SOURCE_PREFIX"]}{user.org_domain}',
+            source=f"{app.config['SIGHTING_SOURCE_PREFIX']}{user.org_domain}",
         )
 
     return redirect(url_for("index", search_query=urllib.parse.quote_plus(sighting_in.value)))

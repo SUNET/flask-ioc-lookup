@@ -1,6 +1,5 @@
-# -*- coding: utf-8 -*-
 from dataclasses import dataclass
-from typing import Dict, List, Optional, cast
+from typing import cast
 
 from flask import Flask, current_app
 
@@ -16,10 +15,10 @@ class TrustedOrg:
 
 
 class IOCLookupApp(Flask):
-    trusted_users: List[str] = []
-    trusted_orgs: Dict[str, TrustedOrg] = {}
-    api_keys: Dict[str, Dict[str, str]] = {}
-    misp_apis: Optional[Dict[str, MISPApi]]
+    trusted_users: list[str] = []
+    trusted_orgs: dict[str, TrustedOrg] = {}
+    api_keys: dict[str, dict[str, str]] = {}
+    misp_apis: dict[str, MISPApi] | None
 
 
 current_ioc_lookup_app: IOCLookupApp = cast(IOCLookupApp, current_app)

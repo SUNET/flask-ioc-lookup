@@ -1,12 +1,10 @@
-# -*- coding: utf-8 -*-
-
 import logging
 from datetime import date, datetime
 from enum import StrEnum
-from typing import Any, List, Optional
+from typing import Any
 
 from pymisp import ExpandedPyMISP
-from pymisp.mispevent import MISPAttribute, MISPEvent, MISPSighting
+from pymisp.mispevent import MISPAttribute, MISPEvent, MISPObject, MISPSighting
 
 from ioc_lookup.misp_attributes import Attr, AttrType
 
@@ -37,15 +35,17 @@ class TLP(StrEnum):
 
 
 class MISPApi:
-    def __init__(self, name: str, api_url: str, api_key: str, verify_cert: bool = True):
+    def __init__(self, name: str, api_url: str, api_key: str, verify_cert: bool = True) -> None:
         self.name = name
         self.pymisp = ExpandedPyMISP(api_url, api_key, verify_cert)
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"MISPApi({self.name}, {self.pymisp})"
 
     @staticmethod
-    def _handle_request_error(data: Any) -> None:
+    def _handle_request_error(
+        data: dict[str, Any] | str | list[MISPEvent | MISPAttribute | MISPObject] | list[dict[str, Any]],
+    ) -> None:
         """
         Example error:
         {'errors': (405, {
@@ -75,14 +75,18 @@ class MISPApi:
             case _:
                 raise ValueError(f"Unknown TLP: {tlp}")
 
-    def search(self, controller: str = "attributes", **kwargs):
+    def search(
+        self,
+        controller: str = "attributes",
+        **kwargs,  # noqa: ANN003
+    ) -> dict[str, Any] | str | list[MISPEvent | MISPAttribute | MISPObject] | list[dict[str, Any]]:
         logger.debug(f"searching for: controller={controller}, kwargs={kwargs}")
         ret = self.pymisp.search(controller, **kwargs)
         self._handle_request_error(ret)
         logger.debug(f"search returned:\n{ret}")
         return ret
 
-    def searchall(self, value: str, controller: str = "attributes") -> List[Any]:
+    def searchall(self, value: str, controller: str = "attributes") -> list[Any]:
         logger.debug(f"searching for: controller={controller}, value={value}, searchall=True")
         ret = self.pymisp.search(controller, value=value, searchall=True)
         self._handle_request_error(ret)
@@ -90,27 +94,31 @@ class MISPApi:
         assert isinstance(ret, dict)  # Please mypy
         return ret.get("Attribute", [])
 
-    def search_sightings(self, context_id: str, context: str = "attribute", source: Optional[str] = None):
+    def search_sightings(
+        self, context_id: str, context: str = "attribute", source: str | None = None
+    ) -> dict[str, Any] | list[dict[str, MISPEvent | MISPAttribute | MISPSighting]]:
         logger.debug(f"searching sightings for: context={context}, context_id={context_id}, source={source}")
         ret = self.pymisp.search_sightings(context=context, context_id=context_id, source=source)
         self._handle_request_error(ret)
         logger.debug(f"search sightings returned:\n{ret}")
         return ret
 
-    def org_name_id_mapping(self):
+    def org_name_id_mapping(self) -> None:
         pass
 
-    def attr_search(self, attr: Attr) -> List[Any]:
+    def attr_search(self, attr: Attr) -> list[Any]:
         types = [typ.value for typ in attr.search_types]
-        return self.search(type_attribute=types, value=attr.value).get("Attribute", [])
+        result = self.search(type_attribute=types, value=attr.value)
+        assert isinstance(result, dict)
+        return result.get("Attribute", [])
 
     def domain_name_search(
         self,
         domain_name: str,
         searchall: bool = False,
-        publish_timestamp: Optional[datetime] = None,
-        limit: Optional[int] = None,
-    ) -> List[Any]:
+        publish_timestamp: datetime | None = None,
+        limit: int | None = None,
+    ) -> list[Any]:
         result = self.search(
             type_attribute="domain",
             value=domain_name,
@@ -118,14 +126,17 @@ class MISPApi:
             publish_timestamp=publish_timestamp,
             limit=limit,
         )
+        assert isinstance(result, dict)
         return result.get("Attribute", [])
 
-    def url_search(self, url: str, searchall: bool = False) -> List[Any]:
+    def url_search(self, url: str, searchall: bool = False) -> list[Any]:
         result = self.search(type_attribute="url", value=url, searchall=searchall)
+        assert isinstance(result, dict)
         return result.get("Attribute", [])
 
-    def sighting_lookup(self, attribute_id: str, source: Optional[str] = None) -> List[Any]:
+    def sighting_lookup(self, attribute_id: str, source: str | None = None) -> list[Any]:
         result = self.search_sightings(context_id=attribute_id, source=source)
+        assert isinstance(result, list)
         return [item["Sighting"] for item in result]
 
     def _get_report_category(self, attr: Attr) -> EventCategory:
@@ -149,16 +160,16 @@ class MISPApi:
 
     def add_event(
         self,
-        attr_items: List[Attr],
+        attr_items: list[Attr],
         info: str,
-        tags: List,
+        tags: list,
         comment: str,
         to_ids: bool,
         distribution: int,
-        reference: Optional[str],
-        ts: Optional[int] = None,
-        published: Optional[bool] = False,
-    ):
+        reference: str | None,
+        ts: int | None = None,
+        published: bool | None = False,
+    ) -> dict[str, Any] | MISPEvent:
         attrs = []
         for item in attr_items:
             category = self._get_report_category(item)
@@ -213,10 +224,10 @@ class MISPApi:
         attr: Attr,
         sighting_type: str,
         source: str,
-        date_from: Optional[datetime] = None,
-        date_to: Optional[datetime] = None,
-    ):
-        sightings: List[MISPSighting] = []
+        date_from: datetime | None = None,
+        date_to: datetime | None = None,
+    ) -> None:
+        sightings: list[MISPSighting] = []
         for item in self.attr_search(attr):
             res = self.pymisp.search_sightings(
                 context="attribute",
@@ -228,7 +239,7 @@ class MISPApi:
                 pythonify=True,
             )
             # Can't get mypy to understand that sighting contains a MISPSighting
-            sightings.extend([d["sighting"] for d in res if d.get("sighting") is not None])  # type: ignore
+            sightings.extend([d["sighting"] for d in res if d.get("sighting") is not None])  # type: ignore  # noqa: PGH003
             # Please mypy
         for sighting in sightings:
             self.pymisp.delete_sighting(sighting)
