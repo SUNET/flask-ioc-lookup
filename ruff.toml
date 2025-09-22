@@ -1,0 +1,32 @@
+# Set the maximum line length to 120.
+line-length = 120
+target-version = "py313"
+
+[lint]
+select = [
+  "ANN",
+  "ASYNC",
+  "E",
+  "ERA",
+  "F",
+  "FAST",
+  "FLY",
+  "FURB",
+  "I",
+  "PERF",
+  "PGH",
+  "PIE",
+  "PL",
+  "UP",
+  "W",
+]
+
+ignore = [
+  "E501",
+  "PLR",
+  "PLW",
+  "PLC0415",
+]
+
+[lint.flake8-annotations]
+allow-star-arg-any = true

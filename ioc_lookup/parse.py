@@ -1,6 +1,6 @@
 import urllib.parse
 from dataclasses import dataclass
-from typing import Any, List, Optional
+from typing import Any
 
 from validators import domain, email, ipv4, ipv6, md5, sha1, sha256, sha512, url, validator
 
@@ -91,8 +91,8 @@ def pre_parse_item(item: str) -> str:
     return item
 
 
-def parse_items(items: Optional[str]) -> List[Attr]:
-    parsed_items: List[Attr] = []
+def parse_items(items: str | None) -> list[Attr]:
+    parsed_items: list[Attr] = []
     line = 0
     errors = []
     if not items:
@@ -191,7 +191,7 @@ def parse_items(items: Optional[str]) -> List[Attr]:
     return parsed_items
 
 
-def parse_item(item: Optional[str]) -> Optional[Attr]:
+def parse_item(item: str | None) -> Attr | None:
     try:
         items = parse_items(item)
     except ParseException:

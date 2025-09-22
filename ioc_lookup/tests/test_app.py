@@ -1,7 +1,6 @@
-# -*- coding: utf-8 -*-
+from collections.abc import Generator
 from os import environ
 from pathlib import Path
-from typing import Generator
 
 import pytest
 from flask import jsonify
@@ -15,7 +14,7 @@ __author__ = "lundberg"
 
 
 @pytest.fixture()
-def app() -> Generator[IOCLookupApp, None, None]:
+def app() -> Generator[IOCLookupApp]:
     environ["IOC_LOOKUP_CONFIG"] = str(Path("./data/test_config.yaml"))
     app = IOCLookupApp("testing app")
     app.config.update(
@@ -32,11 +31,11 @@ def app() -> Generator[IOCLookupApp, None, None]:
 
 
 @pytest.fixture()
-def client(app) -> FlaskClient:
+def client(app: IOCLookupApp) -> FlaskClient:
     return app.test_client()
 
 
-def test_defang_url_handling():
+def test_defang_url_handling() -> None:
     defanged_urls = [
         ("hxxp[://]example[.]org", "http://example.org"),
         ("hxxps[://]example[.]org/file/file[.]zip", "https://example.org/file/file.zip"),
@@ -55,7 +54,7 @@ def test_defang_url_handling():
         assert url == expected, f"{url} != {expected}"
 
 
-def test_parse_items(app):
+def test_parse_items(app: IOCLookupApp) -> None:
     indata = """
             example.org
             test.example.org
@@ -73,10 +72,10 @@ def test_parse_items(app):
             md5:0114f0fb3b87f8dc2dcbeda71c8dda9f
             0b78a829c97b8abaad27a84b0a25f59be83d16bd
             sha1:0b78a829c97b8abaad27a84b0a25f59be83d16bd
-            9dc1b05b8fc53c84839164e82200c5d484b65eeba25b246777fa324869487140            
+            9dc1b05b8fc53c84839164e82200c5d484b65eeba25b246777fa324869487140
             sha256:9dc1b05b8fc53c84839164e82200c5d484b65eeba25b246777fa324869487140 # some text
             7b77d9c836f414bbb53c6f28fd12550435049a9c22ce21910f23ae51a684be27e9e2d3ab9774da59f8e35bf7267aa3b6b2a48394ea7acce7627b37cec9ea363b
-            sha512:7b77d9c836f414bbb53c6f28fd12550435049a9c22ce21910f23ae51a684be27e9e2d3ab9774da59f8e35bf7267aa3b6b2a48394ea7acce7627b37cec9ea363b            
+            sha512:7b77d9c836f414bbb53c6f28fd12550435049a9c22ce21910f23ae51a684be27e9e2d3ab9774da59f8e35bf7267aa3b6b2a48394ea7acce7627b37cec9ea363b
             example@example.org
             example@example[.]org
             """
@@ -210,13 +209,13 @@ def test_parse_items(app):
                 report_types=[AttrType.SHA256],
             ),
             Attr(
-                value="7b77d9c836f414bbb53c6f28fd12550435049a9c22ce21910f23ae51a684be27e9e2d3ab9774da59f8e35bf7267aa3b6b2a48394ea7acce7627b37cec9ea363b",
+                value="7b77d9c836f414bbb53c6f28fd12550435049a9c22ce21910f23ae51a684be27e9e2d3ab9774da59f8e35bf7267aa3b6b2a48394ea7acce7627b37cec9ea363b",  # noqa: E501
                 type=AttrType.SHA512,
                 search_types=[AttrType.SHA512, AttrType.FILENAME_SHA512, AttrType.MALWARE_SAMPLE],
                 report_types=[AttrType.SHA512],
             ),
             Attr(
-                value="7b77d9c836f414bbb53c6f28fd12550435049a9c22ce21910f23ae51a684be27e9e2d3ab9774da59f8e35bf7267aa3b6b2a48394ea7acce7627b37cec9ea363b",
+                value="7b77d9c836f414bbb53c6f28fd12550435049a9c22ce21910f23ae51a684be27e9e2d3ab9774da59f8e35bf7267aa3b6b2a48394ea7acce7627b37cec9ea363b",  # noqa: E501
                 type=AttrType.SHA512,
                 search_types=[AttrType.SHA512, AttrType.FILENAME_SHA512, AttrType.MALWARE_SAMPLE],
                 report_types=[AttrType.SHA512],
@@ -248,7 +247,7 @@ def test_parse_items(app):
         ]
 
 
-def test_parse_items_errors(app):
+def test_parse_items_errors(app: IOCLookupApp) -> None:
     indata = """
             example.org
             test.example.org
@@ -262,22 +261,22 @@ def test_parse_items_errors(app):
         assert e.value.errors == [
             InputError(
                 line=5,
-                message="Invalid input:             some other text sha1:0b78a829c97b8abaad27a84b0a25f59be83d16bd            ",
+                message="Invalid input:             some other text sha1:0b78a829c97b8abaad27a84b0a25f59be83d16bd",
             ),
             InputError(
                 line=6,
-                message="Invalid input:             other text here:9dc1b05b8fc53c84839164e82200c5d484b65eeba25b246777fa324869487140                        ",
+                message="Invalid input:             other text here:9dc1b05b8fc53c84839164e82200c5d484b65eeba25b246777fa324869487140",  # noqa: E501
             ),
         ]
         assert jsonify({"errors": e.value.errors}).json == {
             "errors": [
                 {
                     "line": 5,
-                    "message": "Invalid input:             some other text sha1:0b78a829c97b8abaad27a84b0a25f59be83d16bd            ",
+                    "message": "Invalid input:             some other text sha1:0b78a829c97b8abaad27a84b0a25f59be83d16bd",  # noqa: E501
                 },
                 {
                     "line": 6,
-                    "message": "Invalid input:             other text here:9dc1b05b8fc53c84839164e82200c5d484b65eeba25b246777fa324869487140                        ",
+                    "message": "Invalid input:             other text here:9dc1b05b8fc53c84839164e82200c5d484b65eeba25b246777fa324869487140",  # noqa: E501
                 },
             ]
         }

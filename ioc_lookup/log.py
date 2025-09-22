@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 import logging
 import sys
 
@@ -11,17 +10,17 @@ LOGURU_FORMAT = "<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | <level>{level: 
 
 
 class InterceptHandler(logging.Handler):
-    def emit(self, record):
+    def emit(self, record: logging.LogRecord) -> None:
         # Get corresponding Loguru level if it exists
         try:
             level = logger.level(record.levelname).name
         except ValueError:
-            level = record.levelno
+            level = record.levelno  # type: ignore[assignment]
 
         # Find caller from where originated the logged message
         frame, depth = logging.currentframe(), 2
         while frame.f_code.co_filename == logging.__file__:
-            frame = frame.f_back
+            frame = frame.f_back  # type: ignore[assignment]
             depth += 1
 
         logger.opt(depth=depth, exception=record.exc_info).log(level, record.getMessage())
@@ -33,7 +32,7 @@ logging.getLogger().level = 0  # DEBUG
 
 def init_logging(
     level: str = "INFO",
-    fmt=LOGURU_FORMAT,
+    fmt: str = LOGURU_FORMAT,
     colorize: bool = False,
 ) -> None:
     logger.remove()  # Remove the default handler

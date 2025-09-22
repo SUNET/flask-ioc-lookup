@@ -1,8 +1,7 @@
 -r requirements.txt
 pytest
 pytest-cov
-isort
-black
+ruff
 mypy
 
 # needed for hash

@@ -1,5 +1,3 @@
-# -*- coding: utf-8 -*-
-
 import csv
 import sys
 
@@ -9,24 +7,29 @@ from ioc_lookup.misp_api import MISPApi
 
 __author__ = "lundberg"
 
+from ioc_lookup.parse import parse_item
 
-def main(path, api, delimiter=";", quotechar='"'):
+
+def main(path: str, api: MISPApi, delimiter: str = ";", quotechar: str = '"') -> None:
     with open(path) as f:
         reader = csv.reader(f, delimiter=delimiter, quotechar=quotechar)
-        domain_names = []
+        data_in = []
         for row in reader:
-            domain_name = row[0]
             # TODO: More columns
-            domain_names.append(domain_name)
-        r = api.add_event(
-            domain_names=domain_names,
-            info="From misp_event_importer",
-            tags=["OSINT", "TLP:WHITE"],
-            comment="From CSV",
-            to_ids=True,
-            published=True,
-        )
-        print(r)
+            if item := parse_item(row[0]):
+                data_in.append(item)
+        if data_in:
+            r = api.add_event(
+                attr_items=data_in,
+                info="From misp_event_importer",
+                tags=["OSINT", "TLP:WHITE"],
+                comment="From CSV",
+                to_ids=True,
+                published=True,
+                distribution=int(row[1]),
+                reference=row[2],
+            )
+            print(r)
 
 
 if __name__ == "__main__":

@@ -1,11 +1,11 @@
-# -*- coding: utf-8 -*-
 __author__ = "lundberg"
 
+from collections.abc import Iterator
 from contextlib import contextmanager
 from copy import copy
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, Iterator, List, Optional, Self, Set
+from datetime import UTC, datetime, timedelta
+from typing import Any, Self
 
 from flask import abort, request
 from flask_limiter.util import get_remote_address
@@ -35,19 +35,19 @@ class User:
 @dataclass
 class Votes:
     positives: int = 0
-    positive_orgs: Set[str] = field(default_factory=set)
+    positive_orgs: set[str] = field(default_factory=set)
     negatives: int = 0
-    negative_orgs: Set[str] = field(default_factory=set)
+    negative_orgs: set[str] = field(default_factory=set)
 
 
 @dataclass
 class SightingsData:
     can_add_sighting: bool
     can_add_false_positive: bool
-    votes: Dict[str, Votes] = field(default_factory=dict)
+    votes: dict[str, Votes] = field(default_factory=dict)
 
     @classmethod
-    def from_sightings(cls, data: List[Dict[str, Any]], votes: Dict[str, Votes]):
+    def from_sightings(cls, data: list[dict[str, Any]], votes: dict[str, Votes]) -> Self:
         can_add_sighting = True
         can_add_false_positive = True
         now = datetime.utcnow()
@@ -75,7 +75,7 @@ class ReportData:
     by_proxy: bool = False
 
     @classmethod
-    def load_data(cls, data: dict[str, Any]) -> Optional[Self]:
+    def load_data(cls, data: dict[str, Any]) -> Self | None:
         reference = " ".join(data.get("reference", "").split())  # Normalise whitespace
         tlp = TLP(str(data.get("tlp")))
         info = data.get("info")
@@ -186,7 +186,7 @@ def in_trusted_orgs(userid: str) -> bool:
     return org_domain in current_ioc_lookup_app.trusted_orgs
 
 
-def get_sightings_data(user: User, search_result: List[Dict[str, Any]]) -> SightingsData:
+def get_sightings_data(user: User, search_result: list[dict[str, Any]]) -> SightingsData:
     attribute_votes = {}
     org_sightings = []
     with misp_api_for() as api:
@@ -205,14 +205,14 @@ def get_sightings_data(user: User, search_result: List[Dict[str, Any]]) -> Sight
                 org_sightings.extend(
                     org_api.sighting_lookup(
                         attribute_id=item["id"],
-                        source=f'{current_ioc_lookup_app.config["SIGHTING_SOURCE_PREFIX"]}{user.org_domain}',
+                        source=f"{current_ioc_lookup_app.config['SIGHTING_SOURCE_PREFIX']}{user.org_domain}",
                     )
                 )
     return SightingsData.from_sightings(data=org_sightings, votes=attribute_votes)
 
 
 @contextmanager
-def misp_api_for(user: Optional[User] = None) -> Iterator[MISPApi]:
+def misp_api_for(user: User | None = None) -> Iterator[MISPApi]:
     if current_ioc_lookup_app.misp_apis is None:
         raise PyMISPError("No MISP session exists")
     if user is None:
@@ -251,4 +251,4 @@ def misp_api_for(user: Optional[User] = None) -> Iterator[MISPApi]:
 
 def utc_now() -> datetime:
     """Return current time with tz=UTC"""
-    return datetime.now(tz=timezone.utc)
+    return datetime.now(tz=UTC)

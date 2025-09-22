@@ -1,11 +1,8 @@
-# -*- coding: utf-8 -*-
-
 from __future__ import annotations
 
 import urllib.parse
 from dataclasses import dataclass, field
 from enum import StrEnum
-from typing import List, Optional
 
 from tld import get_fld
 
@@ -19,16 +16,16 @@ SUPPORTED_TYPES = ["domain name", "URL", "IP address", "hash", "email"]
 class Attr:
     value: str
     type: AttrType
-    search_types: List[AttrType] = field(default_factory=list)
-    report_types: List[AttrType] = field(default_factory=list)
+    search_types: list[AttrType] = field(default_factory=list)
+    report_types: list[AttrType] = field(default_factory=list)
 
-    def get_domain(self) -> Optional[str]:
+    def get_domain(self) -> str | None:
         if self.type in [AttrType.URL, AttrType.DOMAIN]:
             url_components = urllib.parse.urlsplit(self.value)
             return url_components.netloc
         return None
 
-    def get_first_level_domain(self) -> Optional[str]:
+    def get_first_level_domain(self) -> str | None:
         if self.type in [AttrType.URL, AttrType.DOMAIN]:
             return get_fld(self.value, fix_protocol=True, fail_silently=True, search_private=False)
         return None

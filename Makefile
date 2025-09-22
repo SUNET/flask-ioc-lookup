@@ -5,8 +5,12 @@ PIPSYNC=$(UV) pip sync --index-url https://pypi.sunet.se/simple
 MYPY_ARGS=--install-types --non-interactive --pretty --ignore-missing-imports --warn-unused-ignores
 
 reformat:
-	isort --line-width 120 --atomic --project eduid_common $(SOURCE)
-	black --line-length 120 --target-version py312 $(SOURCE)
+	# sort imports and remove unused imports
+	ruff check --select F401,I --fix
+	# reformat
+	ruff format
+	# make an extended check with rules that might be triggered by reformat
+	ruff check --config ruff.toml
 
 typecheck:
 	mypy $(MYPY_ARGS) $(SOURCE)
