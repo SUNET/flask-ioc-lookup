@@ -25,7 +25,4 @@ python3 -m venv /opt/flask-ioc-lookup/env
 /opt/flask-ioc-lookup/env/bin/pip install --no-cache-dir -r /opt/flask-ioc-lookup/requirements.txt
 /opt/flask-ioc-lookup/env/bin/pip freeze
 
-addgroup --system ioc
-
-adduser --system --shell /bin/false ioc
-
+useradd --system --shell /bin/false ioc
