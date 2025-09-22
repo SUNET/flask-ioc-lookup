@@ -110,10 +110,10 @@ except PyMISPError as e:
 slackclient = slack.WebClient(token=app.config["SLACK_TOKEN"])
 try:
     SLACK_ID = slackclient.api_call("auth.test").get("user_id")  # type: ignore
-    app.logger.debug(f"Initialized slack webclient")
+    app.logger.debug("Initialized slack webclient")
 except Exception:
     SLACK_ID = None
-    app.logger.error(f"Could not initialize slack webclient")
+    app.logger.error("Could not initialize slack webclient")
 
 # Init rate limiting
 limiter = Limiter(app=app, key_func=get_ipaddr_or_eppn)
@@ -355,7 +355,7 @@ def slacksearch():
     search_context = SearchContext(user=user, misp_url=current_app.config["MISP_URL"], supported_types=SUPPORTED_TYPES)
 
     if app.misp_apis is None:
-        slackclient.chat_postMessage(channel=channel_id, text=f"No MISP session exists")
+        slackclient.chat_postMessage(channel=channel_id, text="No MISP session exists")
         return Response(), 200
 
     original_search_query = search_query
