@@ -11,7 +11,7 @@ from flask.testing import FlaskClient
 from ioc_lookup.ioc_lookup_app import IOCLookupApp
 from ioc_lookup.misp_api import TLP
 
-from .conftest import MockMISPApi
+from .conftest import MockMISPApi, MockPyMISP
 
 __author__ = "lundberg"
 
@@ -179,3 +179,184 @@ class TestMISPApiMethods:
         )
 
         assert result is not None
+
+
+class TestMockRemoveSighting:
+    """Tests for remove_sighting functionality."""
+
+    def test_remove_sighting(self, mock_misp_api: MockMISPApi) -> None:
+        """Test removing a sighting."""
+        from ioc_lookup.misp_attributes import Attr, AttrType
+
+        # First verify the sighting exists
+        initial_sightings = mock_misp_api.sighting_lookup(attribute_id="1", source="flask-ioc-lookup_test.org")
+        assert len(initial_sightings) == 1
+
+        # Remove the sighting
+        attr = Attr(
+            value="malicious.example.com",
+            type=AttrType.DOMAIN,
+            search_types=[AttrType.DOMAIN],
+        )
+        mock_misp_api.remove_sighting(
+            attr=attr,
+            sighting_type="0",
+            source="flask-ioc-lookup_test.org",
+        )
+
+        # Verify it's gone
+        remaining_sightings = mock_misp_api.sighting_lookup(attribute_id="1", source="flask-ioc-lookup_test.org")
+        assert len(remaining_sightings) == 0
+
+
+class TestMockErrorSimulation:
+    """Tests for error simulation capability."""
+
+    def test_search_error_simulation(self, mock_misp_api: MockMISPApi) -> None:
+        """Test that simulated errors are returned from search."""
+        import pytest
+
+        from ioc_lookup.misp_api import RequestException
+
+        # Configure error
+        mock_misp_api.pymisp.simulate_error(403, "Permission denied")  # type: ignore[union-attr]
+
+        # Search should raise RequestException due to error handling in MISPApi
+        with pytest.raises(RequestException, match="Permission denied"):
+            mock_misp_api.search()
+
+    def test_error_clears_after_single_use(self, mock_misp_api: MockMISPApi) -> None:
+        """Test that error simulation clears after being triggered."""
+        # Configure error
+        mock_misp_api.pymisp.simulate_error(500, "Server error")  # type: ignore[union-attr]
+
+        # First call should get the error (but MISPApi will raise, so we catch it)
+        try:
+            mock_misp_api.search()
+        except Exception:
+            pass
+
+        # Second call should succeed
+        result = mock_misp_api.search()
+        assert isinstance(result, dict)
+        assert "Attribute" in result
+
+    def test_clear_error_manually(self, mock_misp_api: MockMISPApi) -> None:
+        """Test manual error clearing."""
+        # Configure error
+        mock_misp_api.pymisp.simulate_error(403, "Permission denied")  # type: ignore[union-attr]
+
+        # Clear it manually
+        mock_misp_api.pymisp.clear_error()  # type: ignore[union-attr]
+
+        # Search should succeed
+        result = mock_misp_api.search()
+        assert isinstance(result, dict)
+        assert "Attribute" in result
+
+    def test_add_sighting_error_simulation(self, mock_misp_api: MockMISPApi) -> None:
+        """Test error simulation for add_sighting."""
+        from ioc_lookup.misp_attributes import Attr, AttrType
+
+        # Configure error
+        mock_misp_api.pymisp.simulate_error(405, "Method not allowed")  # type: ignore[union-attr]
+
+        attr = Attr(value="test.com", type=AttrType.DOMAIN)
+
+        # add_sighting returns the result directly without error handling
+        result = mock_misp_api.pymisp.add_sighting(  # type: ignore[union-attr]
+            type(mock_misp_api.pymisp)("", "", True),  # type: ignore[arg-type]
+            pythonify=False,
+        )
+        # The error was consumed, so we need to set it again for proper test
+        mock_misp_api.pymisp.simulate_error(405, "Method not allowed")  # type: ignore[union-attr]
+
+        # Direct call to mock should return error dict
+        from pymisp.mispevent import MISPSighting
+
+        sighting = MISPSighting()
+        sighting["value"] = attr.value
+        sighting["type"] = "0"
+        sighting["source"] = "test"
+        result = mock_misp_api.pymisp.add_sighting(sighting, pythonify=False)  # type: ignore[union-attr]
+        assert isinstance(result, dict)
+        assert "errors" in result
+
+
+class TestMockDynamicAttributes:
+    """Tests for dynamic attribute handling (verifies bug fix)."""
+
+    def test_search_uses_instance_attributes(self, mock_pymisp: MockPyMISP) -> None:
+        """Test that search uses instance _attributes, not global SAMPLE_ATTRIBUTES."""
+        # Add a new attribute dynamically
+        new_attr = {
+            "id": "999",
+            "event_id": "999",
+            "type": "domain",
+            "category": "Network activity",
+            "value": "dynamic.test.com",
+            "to_ids": True,
+            "comment": "Dynamically added",
+            "timestamp": "1704067200",
+        }
+        mock_pymisp._attributes["dynamic.test.com"] = new_attr
+
+        # Search should find the dynamically added attribute
+        result = mock_pymisp.search(value="dynamic.test.com")
+        assert isinstance(result, dict)
+        assert len(result["Attribute"]) == 1
+        assert result["Attribute"][0]["value"] == "dynamic.test.com"
+
+    def test_reset_restores_attributes(self, mock_misp_api: MockMISPApi) -> None:
+        """Test that reset() restores _attributes to initial state."""
+        # Add a dynamic attribute
+        mock_misp_api.pymisp._attributes["temp.example.com"] = {  # type: ignore[union-attr]
+            "id": "888",
+            "event_id": "888",
+            "type": "domain",
+            "category": "Network activity",
+            "value": "temp.example.com",
+            "to_ids": True,
+            "comment": "Temporary",
+            "timestamp": "1704067200",
+        }
+
+        # Verify it was added
+        result = mock_misp_api.search(value="temp.example.com")
+        assert isinstance(result, dict)
+        assert len(result["Attribute"]) == 1
+
+        # Reset
+        mock_misp_api.reset()
+
+        # Verify it's gone
+        result = mock_misp_api.search(value="temp.example.com")
+        assert isinstance(result, dict)
+        assert len(result["Attribute"]) == 0
+
+    def test_reset_restores_sightings(self, mock_misp_api: MockMISPApi) -> None:
+        """Test that reset() restores _sightings to initial state."""
+        from ioc_lookup.misp_attributes import Attr, AttrType
+
+        # Remove a sighting
+        attr = Attr(
+            value="malicious.example.com",
+            type=AttrType.DOMAIN,
+            search_types=[AttrType.DOMAIN],
+        )
+        mock_misp_api.remove_sighting(
+            attr=attr,
+            sighting_type="0",
+            source="flask-ioc-lookup_test.org",
+        )
+
+        # Verify it's removed
+        sightings = mock_misp_api.sighting_lookup(attribute_id="1", source="flask-ioc-lookup_test.org")
+        assert len(sightings) == 0
+
+        # Reset
+        mock_misp_api.reset()
+
+        # Verify it's restored
+        sightings = mock_misp_api.sighting_lookup(attribute_id="1", source="flask-ioc-lookup_test.org")
+        assert len(sightings) == 1

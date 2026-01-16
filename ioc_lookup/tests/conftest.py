@@ -109,6 +109,35 @@ class MockPyMISP:
         self._attributes = {attr["value"]: attr for attr in SAMPLE_ATTRIBUTES}
         self._sightings: list[dict[str, Any]] = list(SAMPLE_SIGHTINGS)
         self._events: list[dict[str, Any]] = [SAMPLE_EVENT]
+        self._should_fail = False
+        self._error_response: dict[str, Any] | None = None
+
+    def simulate_error(self, error_code: int, message: str) -> None:
+        """Configure the mock to return an error response on the next call."""
+        self._should_fail = True
+        self._error_response = {
+            "errors": (
+                error_code,
+                {
+                    "name": message,
+                    "message": message,
+                    "url": "/mock/error",
+                },
+            )
+        }
+
+    def clear_error(self) -> None:
+        """Clear any configured error simulation."""
+        self._should_fail = False
+        self._error_response = None
+
+    def _check_error(self) -> dict[str, Any] | None:
+        """Check if an error should be returned and clear the error state."""
+        if self._should_fail and self._error_response:
+            error = self._error_response
+            self.clear_error()
+            return error
+        return None
 
     def search(
         self,
@@ -116,6 +145,9 @@ class MockPyMISP:
         **kwargs: Any,
     ) -> dict[str, Any] | list[Any]:
         """Mock search method."""
+        if error := self._check_error():
+            return error
+
         if controller == "attributes":
             # Filter by type_attribute if provided
             type_attr = kwargs.get("type_attribute", [])
@@ -126,7 +158,7 @@ class MockPyMISP:
                 type_attr = [type_attr]
 
             results = []
-            for attr in SAMPLE_ATTRIBUTES:
+            for attr in self._attributes.values():
                 # Match by value (exact or partial for searchall)
                 value_match = False
                 if value:
@@ -157,8 +189,11 @@ class MockPyMISP:
         date_from: datetime | None = None,
         date_to: datetime | None = None,
         pythonify: bool = False,
-    ) -> list[dict[str, Any]]:
+    ) -> list[dict[str, Any]] | dict[str, Any]:
         """Mock search_sightings method."""
+        if error := self._check_error():
+            return error
+
         results = []
         for sighting in self._sightings:
             # Filter by context_id (attribute_id)
@@ -180,8 +215,11 @@ class MockPyMISP:
 
         return results
 
-    def add_event(self, event: MISPEvent) -> MISPEvent:
+    def add_event(self, event: MISPEvent) -> MISPEvent | dict[str, Any]:
         """Mock add_event method."""
+        if error := self._check_error():
+            return error
+
         # Return the event with an ID assigned
         event_dict = event.to_dict()
         event_dict["id"] = str(len(self._events) + 100)
@@ -193,6 +231,9 @@ class MockPyMISP:
 
     def add_sighting(self, sighting: MISPSighting, pythonify: bool = False) -> MISPSighting | dict[str, Any]:
         """Mock add_sighting method."""
+        if error := self._check_error():
+            return error
+
         sighting_dict = sighting.to_dict()
         sighting_dict["id"] = str(len(self._sightings) + 1)
         self._sightings.append(sighting_dict)
@@ -205,6 +246,9 @@ class MockPyMISP:
 
     def delete_sighting(self, sighting: MISPSighting) -> dict[str, Any]:
         """Mock delete_sighting method."""
+        if error := self._check_error():
+            return error
+
         sighting_id = sighting.get("id")
         self._sightings = [s for s in self._sightings if s.get("id") != sighting_id]
         return {"message": "Sighting deleted"}
@@ -219,6 +263,7 @@ class MockMISPApi(MISPApi):
 
     def reset(self) -> None:
         """Reset the mock to initial state."""
+        self.pymisp._attributes = {attr["value"]: attr for attr in SAMPLE_ATTRIBUTES}  # type: ignore[attr-defined]
         self.pymisp._sightings = list(SAMPLE_SIGHTINGS)  # type: ignore[attr-defined]
         self.pymisp._events = [SAMPLE_EVENT]  # type: ignore[attr-defined]
 
