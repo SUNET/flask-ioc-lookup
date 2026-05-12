@@ -1165,9 +1165,9 @@ pymisp==2.5.33.1 \
     --hash=sha256:7d7034bb5b05235e0836c15af9a8116d56a65247e0037a796216942a1d3eb977 \
     --hash=sha256:b5cd9aac342596fbe2696b7c3ee02a2a221574557c0334451b0d4e21a4c5928f
     # via -r requirements.txt
-pytest==9.0.2 \
-    --hash=sha256:711ffd45bf766d5264d487b917733b453d917afd2b0ad65223959f59089f875b \
-    --hash=sha256:75186651a92bd89611d1d9fc20f0b4345fd827c41ccd5c299a868a05d70edf11
+pytest==9.0.3 \
+    --hash=sha256:2c5efc453d45394fdd706ade797c0a81091eccd1d6e4bccfcd476e2b8e0ab5d9 \
+    --hash=sha256:b86ada508af81d19edeb213c681b1d48246c1a91d304c6c81a427674c17eb91c
     # via
     #   -r test_requirements.in
     #   pytest-cov
