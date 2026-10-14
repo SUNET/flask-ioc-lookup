@@ -30,7 +30,8 @@ def slack_signature_failure_reason() -> str | None:
         ts = int(timestamp)
     except ValueError:
         return "bad_timestamp"
-    if abs(time.time() - ts) > SLACK_MAX_AGE_SECONDS:
+    # Integer arithmetic: a huge ts must not overflow a float conversion
+    if abs(int(time.time()) - ts) > SLACK_MAX_AGE_SECONDS:
         return "stale"
     length = request.content_length
     if length is None or length < 0 or length > SLACK_MAX_BODY_BYTES:

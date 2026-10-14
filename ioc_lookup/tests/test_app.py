@@ -1271,6 +1271,12 @@ class TestCsrfProtection:
         assert response.status_code in (400, 403)
         post_message.assert_not_called()
 
+    def test_slack_huge_timestamp(self, app: IOCLookupApp, client: FlaskClient, slack_secret: None) -> None:
+        with patch("ioc_lookup.app.slackclient.chat_postMessage") as post_message:
+            response = self._slack_post(client, timestamp="9" * 400)
+        assert response.status_code in (400, 403)
+        post_message.assert_not_called()
+
     def test_slack_missing_headers(self, app: IOCLookupApp, client: FlaskClient, slack_secret: None) -> None:
         with patch("ioc_lookup.app.slackclient.chat_postMessage") as post_message:
             response = self._slack_post(client, headers=False)
