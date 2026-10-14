@@ -76,7 +76,8 @@ if app.config.get("TRUSTED_USERS"):
             app.api_keys = load_api_keys(loaded_yaml.get("api_keys"), app.logger)
         app.logger.info("Loaded trusted user list and api keys")
         app.logger.debug(f"Trusted user list: {app.trusted_users}")
-        app.logger.debug(f"Trusted user with api keys: {app.api_keys.values()}")
+        # Never log the keys themselves, only how many there are and who owns them
+        app.logger.debug(f"Loaded {len(app.api_keys)} api keys, owners: {sorted(set(app.api_keys.values()))}")
     except OSError as e:
         app.logger.warning(f"Could not initialize trusted user list: {e}")
 
