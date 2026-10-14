@@ -1,12 +1,28 @@
+import hashlib
+import hmac
+import re
+import time
+from collections.abc import Generator
+from typing import Any
+from unittest.mock import MagicMock, patch
+from urllib.parse import urlencode
+
 import pytest
 from flask import jsonify
 from flask.testing import FlaskClient
 
 from ioc_lookup.ioc_lookup_app import IOCLookupApp
+from ioc_lookup.misp_api import MISPApi
 from ioc_lookup.misp_attributes import Attr, AttrType
 from ioc_lookup.parse import InputError, ParseException, defanged_url, get_canonical_url, parse_items, undefang_url
+from ioc_lookup.utils import (
+    apply_security_settings,
+    load_api_keys,
+    resolve_security_settings,
+    validate_api_keys,
+)
 
-from .conftest import AuthenticatedClient
+from .conftest import TEST_API_KEY, TEST_CSRF_TOKEN, TEST_ORIGIN, AuthenticatedClient, csrf_form_post, prime_csrf
 
 __author__ = "lundberg"
 
@@ -285,13 +301,13 @@ class TestIndexRoute:
     def test_index_search_via_post(self, app: IOCLookupApp, client: FlaskClient) -> None:
         """Test search via POST form."""
         with app.app_context():
-            response = client.post("/", data={"search_query": "192.168.1.100"})
+            response = csrf_form_post(client, "/", data={"search_query": "192.168.1.100"})
             assert response.status_code == 200
 
     def test_index_search_invalid_input(self, app: IOCLookupApp, client: FlaskClient) -> None:
         """Test search with invalid input."""
         with app.app_context():
-            response = client.post("/", data={"search_query": "not a valid ioc!@#$"})
+            response = csrf_form_post(client, "/", data={"search_query": "not a valid ioc!@#$"})
             assert response.status_code == 200
             # Should show error message
             assert b"Invalid input" in response.data
@@ -299,7 +315,8 @@ class TestIndexRoute:
     def test_index_search_with_related_results(self, app: IOCLookupApp, client: FlaskClient) -> None:
         """Test search with related results enabled."""
         with app.app_context():
-            response = client.post(
+            response = csrf_form_post(
+                client,
                 "/",
                 data={"search_query": "malicious.example.com", "related_results": "yes"},
             )
@@ -332,7 +349,7 @@ class TestIndexJsonRoute:
             response = client.post(
                 "/",
                 json={"search": "192.168.1.100"},
-                headers={"Accept": "application/json"},
+                headers={"Accept": "application/json", "API-TOKEN": "test-api-key-123"},
             )
             assert response.status_code == 200
             data = response.get_json()
@@ -375,7 +392,7 @@ class TestIndexJsonRoute:
             response = client.post(
                 "/",
                 json={"search": "invalid!@#$%"},
-                headers={"Accept": "application/json"},
+                headers={"Accept": "application/json", "API-TOKEN": "test-api-key-123"},
             )
             assert response.status_code == 200
             data = response.get_json()
@@ -395,7 +412,8 @@ class TestReportRoute:
     def test_report_post_missing_info(self, app: IOCLookupApp, client: FlaskClient) -> None:
         """Test report POST with missing event info."""
         with app.app_context():
-            response = client.post(
+            response = csrf_form_post(
+                client,
                 "/report",
                 data={
                     "ioc": "evil.example.com",
@@ -409,7 +427,8 @@ class TestReportRoute:
     def test_report_post_invalid_tag(self, app: IOCLookupApp, client: FlaskClient) -> None:
         """Test report POST with invalid tag."""
         with app.app_context():
-            response = client.post(
+            response = csrf_form_post(
+                client,
                 "/report",
                 data={
                     "ioc": "evil.example.com",
@@ -424,7 +443,8 @@ class TestReportRoute:
     def test_report_post_valid_domain(self, app: IOCLookupApp, client: FlaskClient) -> None:
         """Test report POST with valid domain IOC."""
         with app.app_context():
-            response = client.post(
+            response = csrf_form_post(
+                client,
                 "/report",
                 data={
                     "ioc": "evil.example.com",
@@ -440,7 +460,8 @@ class TestReportRoute:
     def test_report_post_valid_url(self, app: IOCLookupApp, client: FlaskClient) -> None:
         """Test report POST with valid URL IOC."""
         with app.app_context():
-            response = client.post(
+            response = csrf_form_post(
+                client,
                 "/report",
                 data={
                     "ioc": "https://phishing.example.com/login",
@@ -453,7 +474,8 @@ class TestReportRoute:
     def test_report_post_empty_ioc(self, app: IOCLookupApp, client: FlaskClient) -> None:
         """Test report POST with empty IOC."""
         with app.app_context():
-            response = client.post(
+            response = csrf_form_post(
+                client,
                 "/report",
                 data={
                     "ioc": "",
@@ -487,7 +509,7 @@ class TestReportJsonRoute:
                     "info": "Test event via API",
                     "tags": ["Phishing"],
                 },
-                headers={"Accept": "application/json"},
+                headers={"Accept": "application/json", "API-TOKEN": "test-api-key-123"},
             )
             assert response.status_code == 200
             data = response.get_json()
@@ -504,7 +526,7 @@ class TestReportJsonRoute:
                     "ioc": "evil.example.com",
                     "tlp": "tlp:green",
                 },
-                headers={"Accept": "application/json"},
+                headers={"Accept": "application/json", "API-TOKEN": "test-api-key-123"},
             )
             assert response.status_code == 200
             data = response.get_json()
@@ -521,7 +543,7 @@ class TestReportJsonRoute:
                     "info": "Test event",
                     "tags": ["InvalidTag"],
                 },
-                headers={"Accept": "application/json"},
+                headers={"Accept": "application/json", "API-TOKEN": "test-api-key-123"},
             )
             assert response.status_code == 200
             data = response.get_json()
@@ -538,7 +560,7 @@ class TestReportJsonRoute:
                     "tlp": "tlp:green",
                     "info": "Multiple IOC report",
                 },
-                headers={"Accept": "application/json"},
+                headers={"Accept": "application/json", "API-TOKEN": "test-api-key-123"},
             )
             assert response.status_code == 200
             data = response.get_json()
@@ -553,7 +575,8 @@ class TestSightingRoutes:
         """Test report-sighting requires user from trusted org."""
         with app.app_context():
             # Without trusted org user, should get 401
-            response = client.post(
+            response = csrf_form_post(
+                client,
                 "/report-sighting",
                 data={"search_query": "malicious.example.com", "type": "0"},
             )
@@ -563,7 +586,8 @@ class TestSightingRoutes:
         """Test report-sighting when sightings are disabled."""
         app.config["SIGHTINGS_ENABLED"] = False
         with app.app_context():
-            response = client.post(
+            response = csrf_form_post(
+                client,
                 "/report-sighting",
                 data={"search_query": "malicious.example.com", "type": "0"},
                 environ_base={"HTTP_REMOTE_USER": "user@test.org"},
@@ -575,7 +599,8 @@ class TestSightingRoutes:
     def test_report_sighting_missing_params(self, app: IOCLookupApp, client: FlaskClient) -> None:
         """Test report-sighting with missing parameters."""
         with app.app_context():
-            response = client.post(
+            response = csrf_form_post(
+                client,
                 "/report-sighting",
                 data={},
                 environ_base={"HTTP_REMOTE_USER": "user@test.org"},
@@ -585,7 +610,8 @@ class TestSightingRoutes:
     def test_remove_sighting_requires_trusted_org(self, app: IOCLookupApp, client: FlaskClient) -> None:
         """Test remove-sighting requires user from trusted org."""
         with app.app_context():
-            response = client.post(
+            response = csrf_form_post(
+                client,
                 "/remove-sighting",
                 data={"search_query": "malicious.example.com", "type": "0"},
             )
@@ -595,7 +621,8 @@ class TestSightingRoutes:
         """Test remove-sighting when sightings are disabled."""
         app.config["SIGHTINGS_ENABLED"] = False
         with app.app_context():
-            response = client.post(
+            response = csrf_form_post(
+                client,
                 "/remove-sighting",
                 data={"search_query": "malicious.example.com", "type": "0"},
                 environ_base={"HTTP_REMOTE_USER": "user@test.org"},
@@ -653,6 +680,150 @@ class TestAuthenticatedRequests:
             assert response.status_code == 302
 
 
+class TestApiKeyPrivileges:
+    """An API key acts as the eppn it maps to, including trusted user/org privileges."""
+
+    @pytest.fixture
+    def key_owner(self, app: IOCLookupApp) -> Generator[Any]:
+        original_keys, original_users = app.api_keys, app.trusted_users
+
+        def set_owner(eppn: str) -> None:
+            app.api_keys = {TEST_API_KEY: eppn}
+
+        yield set_owner
+        app.api_keys, app.trusted_users = original_keys, original_users
+
+    def _report(self, client: FlaskClient) -> Any:  # noqa: ANN401
+        with patch.object(MISPApi, "add_event") as add_event:
+            response = client.post(
+                "/report",
+                json={"ioc": "apikey.example.com", "tlp": "tlp:green", "info": "api key test"},
+                headers={"API-TOKEN": TEST_API_KEY, "Accept": "application/json"},
+            )
+        return response, add_event
+
+    def test_api_key_mapped_to_trusted_eppn_can_publish(
+        self,
+        app: IOCLookupApp,
+        client: FlaskClient,
+        key_owner: Any,  # noqa: ANN401
+    ) -> None:
+        key_owner("trusted@test.org")
+        response, add_event = self._report(client)
+        assert response.status_code == 200
+        add_event.assert_called_once()
+        assert add_event.call_args.kwargs["published"] is True
+
+    def test_api_key_mapped_to_untrusted_eppn_does_not_publish(
+        self,
+        app: IOCLookupApp,
+        client: FlaskClient,
+        key_owner: Any,  # noqa: ANN401
+    ) -> None:
+        key_owner("nobody@elsewhere.org")
+        response, add_event = self._report(client)
+        assert response.status_code == 200
+        add_event.assert_called_once()
+        assert not add_event.call_args.kwargs["published"]
+
+    def test_api_key_mapped_to_trusted_org_can_vote(
+        self,
+        app: IOCLookupApp,
+        client: FlaskClient,
+        key_owner: Any,  # noqa: ANN401
+    ) -> None:
+        key_owner("someone@test.org")
+        response = client.post(
+            "/report-sighting",
+            json={"search_query": "malicious.example.com", "type": "0"},
+            headers={"API-TOKEN": TEST_API_KEY, "Accept": "application/json"},
+        )
+        assert response.status_code != 401
+        key_owner("someone@untrusted.org")
+        response = client.post(
+            "/report-sighting",
+            json={"search_query": "malicious.example.com", "type": "0"},
+            headers={"API-TOKEN": TEST_API_KEY, "Accept": "application/json"},
+        )
+        assert response.status_code == 401
+
+
+class TestResolveSecuritySettings:
+    def test_cookie_defaults(self) -> None:
+        resolved = resolve_security_settings({"SECRET_KEY": "k"}, {})
+        assert resolved["SESSION_COOKIE_NAME"] == "ioc_lookup_session"
+        assert resolved["SESSION_COOKIE_SECURE"] is True
+        assert resolved["SESSION_COOKIE_SAMESITE"] == "Lax"
+        assert resolved["SESSION_COOKIE_HTTPONLY"] is True
+
+    def test_yaml_secure_false(self) -> None:
+        assert (
+            resolve_security_settings({"SECRET_KEY": "k", "SESSION_COOKIE_SECURE": False}, {})["SESSION_COOKIE_SECURE"]
+            is False
+        )
+
+    def test_yaml_null_uses_default(self) -> None:
+        resolved = resolve_security_settings({"SECRET_KEY": "k", "SESSION_COOKIE_SECURE": None}, {})
+        assert resolved["SESSION_COOKIE_SECURE"] is True
+
+    def test_env_secret_overrides_yaml(self) -> None:
+        resolved = resolve_security_settings({"SECRET_KEY": "yaml"}, {"IOC_LOOKUP_SECRET_KEY": "env"})
+        assert resolved["SECRET_KEY"] == "env"
+
+    def test_missing_secret_key(self) -> None:
+        with pytest.raises(ValueError, match="SECRET_KEY"):
+            resolve_security_settings({}, {})
+        with pytest.raises(ValueError, match="SECRET_KEY"):
+            resolve_security_settings({"SECRET_KEY": ""}, {"IOC_LOOKUP_SECRET_KEY": ""})
+
+
+class TestConfigFailures:
+    def test_missing_secret_raises_and_logs(self) -> None:
+        logger = MagicMock()
+        config: dict[str, Any] = {}
+        with pytest.raises(RuntimeError, match="SECRET_KEY must be set"):
+            apply_security_settings(config, {}, {}, logger)
+        logger.error.assert_called_once()
+        assert config == {}
+
+    def test_empty_yaml_gives_operator_message(self) -> None:
+        import yaml
+
+        loaded = yaml.safe_load("# only a comment\n")
+        yaml_config = loaded if isinstance(loaded, dict) else {}
+        with pytest.raises(RuntimeError, match="SECRET_KEY must be set"):
+            apply_security_settings({}, yaml_config, {}, MagicMock())
+
+    def test_applies_settings(self) -> None:
+        config: dict[str, Any] = {}
+        apply_security_settings(config, {"SECRET_KEY": "k"}, {}, MagicMock())
+        assert config["SECRET_KEY"] == "k"
+        assert config["SESSION_COOKIE_SECURE"] is True
+
+    def test_bad_api_keys_raise_without_key_values(self) -> None:
+        logger = MagicMock()
+        with pytest.raises(RuntimeError) as exc:
+            load_api_keys({"secret-key": {"x": 1}}, logger)
+        assert "secret-key" not in str(exc.value)
+        assert "secret-key" not in str(logger.error.call_args)
+        assert load_api_keys(None, logger) == {}
+
+
+class TestValidateApiKeys:
+    def test_valid_and_empty(self) -> None:
+        assert validate_api_keys({"k": "a@b.org"}) == {"k": "a@b.org"}
+        assert validate_api_keys(None) == {}
+        assert validate_api_keys({}) == {}
+
+    @pytest.mark.parametrize(
+        "raw", [{"secret-key": {"nested": "x"}}, {"secret-key": ""}, {"secret-key": None}, {"": "a@b.org"}, ["x"]]
+    )
+    def test_invalid_does_not_leak_keys(self, raw: object) -> None:
+        with pytest.raises(ValueError) as exc:
+            validate_api_keys(raw)
+        assert "secret-key" not in str(exc.value)
+
+
 class TestErrorHandling:
     """Tests for error handling."""
 
@@ -687,25 +858,26 @@ class TestDefangedInputs:
     def test_search_defanged_domain(self, app: IOCLookupApp, client: FlaskClient) -> None:
         """Test search with defanged domain."""
         with app.app_context():
-            response = client.post("/", data={"search_query": "example[.]com"})
+            response = csrf_form_post(client, "/", data={"search_query": "example[.]com"})
             assert response.status_code == 200
 
     def test_search_defanged_url(self, app: IOCLookupApp, client: FlaskClient) -> None:
         """Test search with defanged URL."""
         with app.app_context():
-            response = client.post("/", data={"search_query": "hxxps[://]example[.]com/path"})
+            response = csrf_form_post(client, "/", data={"search_query": "hxxps[://]example[.]com/path"})
             assert response.status_code == 200
 
     def test_search_defanged_ip(self, app: IOCLookupApp, client: FlaskClient) -> None:
         """Test search with defanged IP."""
         with app.app_context():
-            response = client.post("/", data={"search_query": "192[.]168[.]1[.]100"})
+            response = csrf_form_post(client, "/", data={"search_query": "192[.]168[.]1[.]100"})
             assert response.status_code == 200
 
     def test_report_defanged_domain(self, app: IOCLookupApp, client: FlaskClient) -> None:
         """Test report with defanged domain."""
         with app.app_context():
-            response = client.post(
+            response = csrf_form_post(
+                client,
                 "/report",
                 data={
                     "ioc": "evil[.]example[.]com",
@@ -714,3 +886,546 @@ class TestDefangedInputs:
                 },
             )
             assert response.status_code == 200
+
+
+CSRF_ENDPOINTS = {
+    "/report": {"ioc": "csrf.example.com", "tlp": "tlp:green", "info": "CSRF test"},
+    "/report-sighting": {"search_query": "malicious.example.com", "type": "0"},
+    "/remove-sighting": {"search_query": "malicious.example.com", "type": "0"},
+    "/": {"search_query": "192.168.1.100"},
+}
+USER_ENV = {"HTTP_REMOTE_USER": "testuser@test.org"}
+
+
+def _state(app: IOCLookupApp) -> list[tuple[int, int]]:
+    return [(len(api.pymisp._events), len(api.pymisp._sightings)) for api in app.misp_apis.values()]  # type: ignore[union-attr]
+
+
+class TestCsrfProtection:
+    """Tests for CSRF protection of unsafe requests."""
+
+    @pytest.fixture
+    def spies(self, app: IOCLookupApp):  # noqa: ANN201
+        with (
+            patch.object(MISPApi, "attr_search") as attr_search,
+            patch.object(MISPApi, "add_event") as add_event,
+            patch.object(MISPApi, "add_sighting") as add_sighting,
+        ):
+            self.attr_search, self.add_event, self.add_sighting = attr_search, add_event, add_sighting
+            yield
+
+    def _assert_untouched(self, app: IOCLookupApp, before: list[tuple[int, int]]) -> None:
+        assert hasattr(self, "attr_search"), "requires spies fixture"
+        assert _state(app) == before
+        self.attr_search.assert_not_called()
+        self.add_event.assert_not_called()
+        self.add_sighting.assert_not_called()
+
+    @pytest.mark.parametrize("url", list(CSRF_ENDPOINTS))
+    @pytest.mark.usefixtures("spies")
+    def test_no_token(self, app: IOCLookupApp, client: FlaskClient, url: str) -> None:
+        before = _state(app)
+        prime_csrf(client)
+        response = client.post(url, data=CSRF_ENDPOINTS[url], headers={"Origin": TEST_ORIGIN}, environ_base=USER_ENV)
+        assert response.status_code == 400
+        self._assert_untouched(app, before)
+
+    @pytest.mark.parametrize("url", list(CSRF_ENDPOINTS))
+    @pytest.mark.usefixtures("spies")
+    def test_garbage_token(self, app: IOCLookupApp, client: FlaskClient, url: str) -> None:
+        before = _state(app)
+        prime_csrf(client)
+        data = {**CSRF_ENDPOINTS[url], "csrf_token": "garbage"}
+        response = client.post(url, data=data, headers={"Origin": TEST_ORIGIN}, environ_base=USER_ENV)
+        assert response.status_code == 400
+        self._assert_untouched(app, before)
+
+    @pytest.mark.parametrize("url", list(CSRF_ENDPOINTS))
+    @pytest.mark.usefixtures("spies")
+    def test_token_without_session(self, app: IOCLookupApp, client: FlaskClient, url: str) -> None:
+        before = _state(app)
+        data = {**CSRF_ENDPOINTS[url], "csrf_token": "some-token"}
+        response = client.post(url, data=data, headers={"Origin": TEST_ORIGIN}, environ_base=USER_ENV)
+        assert response.status_code == 400
+        self._assert_untouched(app, before)
+
+    @pytest.mark.parametrize("url", list(CSRF_ENDPOINTS))
+    @pytest.mark.usefixtures("spies")
+    def test_cross_session_token(self, app: IOCLookupApp, url: str) -> None:
+        before = _state(app)
+        attacker = app.test_client()
+        victim = app.test_client()
+        token = prime_csrf(attacker, "attacker-token")
+        prime_csrf(victim, "victim-token")
+        data = {**CSRF_ENDPOINTS[url], "csrf_token": token}
+        response = victim.post(url, data=data, headers={"Origin": TEST_ORIGIN}, environ_base=USER_ENV)
+        assert response.status_code == 400
+        self._assert_untouched(app, before)
+
+    @pytest.mark.parametrize("url", list(CSRF_ENDPOINTS))
+    @pytest.mark.parametrize(
+        "headers", [{"Origin": "http://evil.example"}, {"Origin": "null"}, {"Referer": "http://evil.example/x"}]
+    )
+    @pytest.mark.usefixtures("spies")
+    def test_foreign_origin(self, app: IOCLookupApp, client: FlaskClient, url: str, headers: dict[str, str]) -> None:
+        before = _state(app)
+        token = prime_csrf(client)
+        data = {**CSRF_ENDPOINTS[url], "csrf_token": token}
+        response = client.post(url, data=data, headers=headers, environ_base=USER_ENV)
+        assert response.status_code == 403
+        self._assert_untouched(app, before)
+
+    @pytest.mark.parametrize("url", list(CSRF_ENDPOINTS))
+    @pytest.mark.usefixtures("spies")
+    def test_no_origin_no_referer(self, app: IOCLookupApp, client: FlaskClient, url: str) -> None:
+        before = _state(app)
+        token = prime_csrf(client)
+        data = {**CSRF_ENDPOINTS[url], "csrf_token": token}
+        response = client.post(url, data=data, environ_base=USER_ENV)
+        assert response.status_code == 403
+        self._assert_untouched(app, before)
+
+    def test_referer_fallback_allowed(self, app: IOCLookupApp, client: FlaskClient) -> None:
+        token = prime_csrf(client, identity=USER_ENV["HTTP_REMOTE_USER"])
+        data = {**CSRF_ENDPOINTS["/"], "csrf_token": token}
+        response = client.post("/", data=data, headers={"Referer": f"{TEST_ORIGIN}/somewhere"}, environ_base=USER_ENV)
+        assert response.status_code == 200
+
+    def test_header_token_accepted(self, app: IOCLookupApp, client: FlaskClient) -> None:
+        token = prime_csrf(client, identity=USER_ENV["HTTP_REMOTE_USER"])
+        response = client.post(
+            "/", data=CSRF_ENDPOINTS["/"], headers={"Origin": TEST_ORIGIN, "X-CSRF-Token": token}, environ_base=USER_ENV
+        )
+        assert response.status_code == 200
+
+    def test_valid_report(self, app: IOCLookupApp, client: FlaskClient) -> None:
+        before = _state(app)
+        response = csrf_form_post(client, "/report", CSRF_ENDPOINTS["/report"], environ_base=USER_ENV)
+        assert response.status_code == 200
+        assert sum(e for e, _ in _state(app)) == sum(e for e, _ in before) + 1
+
+    def test_valid_report_sighting(self, app: IOCLookupApp, authenticated_client: AuthenticatedClient) -> None:
+        before = _state(app)
+        response = authenticated_client.post("/report-sighting", data=CSRF_ENDPOINTS["/report-sighting"])
+        assert response.status_code == 302
+        assert sum(s for _, s in _state(app)) == sum(s for _, s in before) + 1
+
+    def test_end_to_end_form_token(self, app: IOCLookupApp, client: FlaskClient) -> None:
+        page = client.get("/report")
+        match = re.search(rb'name="csrf_token" value="([^"]+)"', page.data)
+        assert match is not None
+        response = client.post(
+            "/report",
+            data={**CSRF_ENDPOINTS["/report"], "csrf_token": match.group(1).decode()},
+            headers={"Origin": TEST_ORIGIN},
+        )
+        assert response.status_code == 200
+
+    def test_json_with_valid_api_token(self, app: IOCLookupApp, client: FlaskClient) -> None:
+        response = client.post(
+            "/report",
+            json=CSRF_ENDPOINTS["/report"],
+            headers={"Accept": "application/json", "API-TOKEN": TEST_API_KEY},
+        )
+        assert response.status_code == 200
+
+    @pytest.mark.usefixtures("spies")
+    def test_json_accept_form_without_api_token_rejected(self, app: IOCLookupApp, client: FlaskClient) -> None:
+        before = _state(app)
+        response = client.post(
+            "/report",
+            data=CSRF_ENDPOINTS["/report"],
+            headers={"Accept": "application/json", "Origin": "http://evil.example"},
+        )
+        assert response.status_code in (400, 403)
+        assert response.get_json()["status"] == response.status_code
+        self._assert_untouched(app, before)
+
+    @pytest.mark.usefixtures("spies")
+    def test_invalid_api_token_rejected(self, app: IOCLookupApp, client: FlaskClient) -> None:
+        before = _state(app)
+        response = client.post(
+            "/report",
+            json=CSRF_ENDPOINTS["/report"],
+            headers={"Accept": "application/json", "API-TOKEN": "not-a-valid-key"},
+        )
+        assert response.status_code in (400, 403)
+        self._assert_untouched(app, before)
+
+    @pytest.mark.usefixtures("spies")
+    def test_json_post_with_api_token_and_foreign_origin_allowed(self, app: IOCLookupApp, client: FlaskClient) -> None:
+        with patch.object(app.logger, "info") as info:
+            response = client.post(
+                "/report",
+                json=CSRF_ENDPOINTS["/report"],
+                headers={"API-TOKEN": TEST_API_KEY, "Origin": "http://evil.example", "Accept": "application/json"},
+            )
+        assert response.status_code == 200
+        self.add_event.assert_called()
+        logged = " ".join(str(c.args[0]) for c in info.call_args_list)
+        assert "api-user@test.org" in logged
+        assert TEST_API_KEY not in logged
+
+    @pytest.mark.usefixtures("spies")
+    def test_form_post_with_api_token_and_foreign_origin_rejected(self, app: IOCLookupApp, client: FlaskClient) -> None:
+        before = _state(app)
+        with patch.object(app.logger, "warning") as warning:
+            response = client.post(
+                "/report",
+                data=CSRF_ENDPOINTS["/report"],
+                headers={"API-TOKEN": TEST_API_KEY, "Origin": "http://evil.example"},
+            )
+        assert response.status_code in (400, 403)
+        self._assert_untouched(app, before)
+        logged = " ".join(str(c.args[0]) for c in warning.call_args_list)
+        assert "non-JSON content type" in logged
+        assert TEST_API_KEY not in logged
+
+    @pytest.mark.usefixtures("spies")
+    def test_unknown_api_token_with_foreign_origin_rejected(self, app: IOCLookupApp, client: FlaskClient) -> None:
+        before = _state(app)
+        response = client.post(
+            "/report",
+            data=CSRF_ENDPOINTS["/report"],
+            headers={"API-TOKEN": "unknown-key", "Origin": "http://evil.example"},
+        )
+        assert response.status_code in (400, 403)
+        self._assert_untouched(app, before)
+
+    @pytest.mark.parametrize("token", ["", "   "])
+    @pytest.mark.usefixtures("spies")
+    def test_empty_api_token_rejected(self, app: IOCLookupApp, client: FlaskClient, token: str) -> None:
+        before = _state(app)
+        response = client.post(
+            "/report",
+            data=CSRF_ENDPOINTS["/report"],
+            headers={"API-TOKEN": token, "Origin": "http://evil.example"},
+        )
+        assert response.status_code in (400, 403)
+        self._assert_untouched(app, before)
+
+    @pytest.mark.usefixtures("spies")
+    def test_json_post_same_origin_without_api_token(self, app: IOCLookupApp, client: FlaskClient) -> None:
+        before = _state(app)
+        response = client.post(
+            "/report",
+            json=CSRF_ENDPOINTS["/report"],
+            headers={"Accept": "application/json", "Origin": TEST_ORIGIN},
+            environ_base=USER_ENV,
+        )
+        assert response.status_code == 400
+        self._assert_untouched(app, before)
+
+    @pytest.mark.usefixtures("spies")
+    def test_remote_user_json_post_with_session_token(self, app: IOCLookupApp, client: FlaskClient) -> None:
+        token = prime_csrf(client, identity=USER_ENV["HTTP_REMOTE_USER"])
+        response = client.post(
+            "/report",
+            json=CSRF_ENDPOINTS["/report"],
+            headers={"Accept": "application/json", "Origin": TEST_ORIGIN, "X-CSRF-Token": token},
+            environ_base=USER_ENV,
+        )
+        assert response.status_code == 200
+        self.add_event.assert_called()
+
+    @pytest.fixture
+    def tight_limit(self, app: IOCLookupApp) -> Generator[None]:
+        from ioc_lookup.app import limiter
+
+        original = app.config["REQUEST_RATE_LIMIT"]
+        app.config["REQUEST_RATE_LIMIT"] = "3/minute"
+        limiter.reset()
+        yield
+        app.config["REQUEST_RATE_LIMIT"] = original
+        limiter.reset()
+
+    @pytest.mark.usefixtures("spies", "tight_limit")
+    def test_rate_limit_precedes_csrf(self, app: IOCLookupApp, client: FlaskClient) -> None:
+        codes = [client.post("/report", data=CSRF_ENDPOINTS["/report"]).status_code for _ in range(5)]
+        assert codes[:3] == [403, 403, 403]
+        assert codes[3:] == [429, 429]
+
+    @pytest.mark.usefixtures("tight_limit")
+    def test_decorated_route_still_limited(self, app: IOCLookupApp, client: FlaskClient) -> None:
+        codes = [client.get("/report").status_code for _ in range(5)]
+        assert codes == [200, 200, 200, 429, 429]
+
+    @pytest.mark.usefixtures("tight_limit")
+    def test_rate_limit_json_response(self, app: IOCLookupApp, client: FlaskClient) -> None:
+        for _ in range(3):
+            client.get("/report")
+        response = client.get("/report", headers={"Accept": "application/json"})
+        assert response.status_code == 429
+        assert response.get_json()["status"] == 429
+
+    @pytest.mark.usefixtures("tight_limit")
+    def test_static_not_rate_limited(self, app: IOCLookupApp, client: FlaskClient) -> None:
+        codes = {client.get("/static/css/bootstrap-grid.css").status_code for _ in range(6)}
+        assert codes == {200}
+
+    def _form_token(self, client: FlaskClient, user: str | None) -> str:
+        env = {"HTTP_REMOTE_USER": user} if user else {}
+        page = client.get("/report", environ_base=env)
+        match = re.search(rb'name="csrf_token" value="([^"]+)"', page.data)
+        assert match is not None
+        return match.group(1).decode()
+
+    @pytest.mark.usefixtures("spies")
+    def test_token_minted_for_one_identity_rejected_for_another(self, app: IOCLookupApp, client: FlaskClient) -> None:
+        token = self._form_token(client, "a@test.org")
+        before = _state(app)
+        response = client.post(
+            "/report",
+            data={**CSRF_ENDPOINTS["/report"], "csrf_token": token},
+            headers={"Origin": TEST_ORIGIN},
+            environ_base={"HTTP_REMOTE_USER": "b@test.org"},
+        )
+        assert response.status_code == 400
+        self._assert_untouched(app, before)
+
+    def test_token_accepted_for_same_identity(self, app: IOCLookupApp, client: FlaskClient) -> None:
+        token = self._form_token(client, "a@test.org")
+        response = client.post(
+            "/report",
+            data={**CSRF_ENDPOINTS["/report"], "csrf_token": token},
+            headers={"Origin": TEST_ORIGIN},
+            environ_base={"HTTP_REMOTE_USER": "a@test.org"},
+        )
+        assert response.status_code == 200
+
+    def test_new_identity_gets_new_token(self, app: IOCLookupApp, client: FlaskClient) -> None:
+        token_a = self._form_token(client, "a@test.org")
+        token_b = self._form_token(client, "b@test.org")
+        assert token_a != token_b
+        assert self._form_token(client, "b@test.org") == token_b
+
+    def test_no_remote_user_consistent(self, app: IOCLookupApp, client: FlaskClient) -> None:
+        token = self._form_token(client, None)
+        assert self._form_token(client, None) == token
+        response = client.post("/", data={**CSRF_ENDPOINTS["/"], "csrf_token": token}, headers={"Origin": TEST_ORIGIN})
+        assert response.status_code != 400
+
+    def test_identity_binding_does_not_affect_api_key_json(self, app: IOCLookupApp, client: FlaskClient) -> None:
+        response = client.post(
+            "/report",
+            json=CSRF_ENDPOINTS["/report"],
+            headers={"API-TOKEN": TEST_API_KEY, "Accept": "application/json"},
+            environ_base={"HTTP_REMOTE_USER": "someone-else@test.org"},
+        )
+        assert response.status_code == 200
+
+    SLACK_SECRET = "slack-test-secret"
+
+    def _slack_post(
+        self,
+        client: FlaskClient,
+        data: dict[str, str] | None = None,
+        secret: str | None = SLACK_SECRET,
+        timestamp: str | None = None,
+        signature: str | None = None,
+        headers: bool = True,
+    ) -> Any:  # noqa: ANN401
+        body = urlencode(data if data is not None else {"channel_id": "C123", "text": "invalid!@#$"})
+        ts = timestamp if timestamp is not None else str(int(time.time()))
+        sig = signature
+        if sig is None:
+            sig = "v0=" + hmac.new((secret or "x").encode(), f"v0:{ts}:{body}".encode(), hashlib.sha256).hexdigest()
+        hdrs = {"X-Slack-Request-Timestamp": ts, "X-Slack-Signature": sig} if headers else {}
+        return client.post(
+            "/slack/ioc-lookup", data=body, content_type="application/x-www-form-urlencoded", headers=hdrs
+        )
+
+    @pytest.fixture
+    def slack_secret(self, app: IOCLookupApp) -> Generator[None]:
+        app.config["SLACK_SIGNING_SECRET"] = self.SLACK_SECRET
+        yield
+        app.config.pop("SLACK_SIGNING_SECRET", None)
+
+    def test_slack_valid_signature(self, app: IOCLookupApp, client: FlaskClient, slack_secret: None) -> None:
+        with patch("ioc_lookup.app.slackclient.chat_postMessage") as post_message:
+            response = self._slack_post(client)
+        assert response.status_code == 200
+        post_message.assert_called_once()
+
+    def test_slack_bad_signature(self, app: IOCLookupApp, client: FlaskClient, slack_secret: None) -> None:
+        with patch("ioc_lookup.app.slackclient.chat_postMessage") as post_message:
+            response = self._slack_post(client, signature="v0=" + "0" * 64)
+        assert response.status_code in (400, 403)
+        post_message.assert_not_called()
+
+    def test_slack_wrong_secret(self, app: IOCLookupApp, client: FlaskClient, slack_secret: None) -> None:
+        with patch("ioc_lookup.app.slackclient.chat_postMessage") as post_message:
+            response = self._slack_post(client, secret="other-secret")
+        assert response.status_code in (400, 403)
+        post_message.assert_not_called()
+
+    def test_slack_stale_timestamp(self, app: IOCLookupApp, client: FlaskClient, slack_secret: None) -> None:
+        with patch("ioc_lookup.app.slackclient.chat_postMessage") as post_message:
+            response = self._slack_post(client, timestamp=str(int(time.time()) - 301))
+        assert response.status_code in (400, 403)
+        post_message.assert_not_called()
+
+    def test_slack_non_integer_timestamp(self, app: IOCLookupApp, client: FlaskClient, slack_secret: None) -> None:
+        with patch("ioc_lookup.app.slackclient.chat_postMessage") as post_message:
+            response = self._slack_post(client, timestamp="not-a-number")
+        assert response.status_code in (400, 403)
+        post_message.assert_not_called()
+
+    def test_slack_missing_headers(self, app: IOCLookupApp, client: FlaskClient, slack_secret: None) -> None:
+        with patch("ioc_lookup.app.slackclient.chat_postMessage") as post_message:
+            response = self._slack_post(client, headers=False)
+        assert response.status_code in (400, 403)
+        post_message.assert_not_called()
+
+    def test_slack_no_secret_configured(self, app: IOCLookupApp, client: FlaskClient) -> None:
+        app.config.pop("SLACK_SIGNING_SECRET", None)
+        with patch("ioc_lookup.app.slackclient.chat_postMessage") as post_message:
+            response = self._slack_post(client)
+        assert response.status_code in (400, 403)
+        post_message.assert_not_called()
+
+    def test_slack_body_too_large(self, app: IOCLookupApp, client: FlaskClient, slack_secret: None) -> None:
+        with patch("ioc_lookup.app.slackclient.chat_postMessage") as post_message:
+            response = self._slack_post(client, data={"channel_id": "C123", "text": "a" * 70000})
+        assert response.status_code in (400, 403)
+        post_message.assert_not_called()
+
+    def test_slack_failure_logged_without_secrets(
+        self, app: IOCLookupApp, client: FlaskClient, slack_secret: None
+    ) -> None:
+        bad_sig = "v0=" + "1" * 64
+        with patch.object(app.logger, "warning") as warning:
+            self._slack_post(client, signature=bad_sig)
+        logged = " ".join(str(c.args[0]) for c in warning.call_args_list)
+        assert "bad_signature" in logged
+        assert bad_sig not in logged
+        assert self.SLACK_SECRET not in logged
+
+    def test_csrf_error_json_negotiation(self, app: IOCLookupApp, client: FlaskClient) -> None:
+        resp = client.post("/report", data={}, headers={"Accept": "*/*"})
+        assert resp.status_code in (400, 403)
+        assert resp.is_json
+        resp = client.post("/report", data={}, headers={"Accept": "text/html"})
+        assert resp.status_code in (400, 403)
+        assert not resp.is_json
+
+    def test_max_content_length_default(self, app: IOCLookupApp) -> None:
+        assert app.config["MAX_CONTENT_LENGTH"]
+
+    def test_slack_missing_channel_id(self, app: IOCLookupApp, client: FlaskClient, slack_secret: None) -> None:
+        with patch("ioc_lookup.app.slackclient.chat_postMessage") as post_message:
+            response = self._slack_post(client, data={"text": "example.com"})
+        assert response.status_code == 400
+        post_message.assert_not_called()
+
+    def test_session_cookie_flags(self, app: IOCLookupApp, client: FlaskClient) -> None:
+        response = client.get("/report")
+        cookie = response.headers.get("Set-Cookie", "")
+        assert "ioc_lookup_session=" in cookie
+        assert "HttpOnly" in cookie
+        assert "SameSite=Lax" in cookie
+
+    def _origin_post(self, app: IOCLookupApp, client: FlaskClient, origin: str, trusted: list[str] | None) -> Any:  # noqa: ANN401
+        original = app.config.get("TRUSTED_ORIGINS")
+        app.config["TRUSTED_ORIGINS"] = trusted or []
+        try:
+            token = prime_csrf(client)
+            with patch.object(app.logger, "warning") as warning:
+                response = client.post(
+                    "/report", data={"csrf_token": token}, headers={"Origin": origin, "Accept": "application/json"}
+                )
+            self._origin_logs = " ".join(str(c.args[0]) for c in warning.call_args_list)
+            return response
+        finally:
+            app.config["TRUSTED_ORIGINS"] = original
+
+    def test_cross_scheme_origin(self, app: IOCLookupApp, client: FlaskClient) -> None:
+        response = self._origin_post(app, client, "https://localhost", None)
+        assert response.status_code == 403
+        assert "Origin rejected" in self._origin_logs
+        assert "scheme mismatch" in self._origin_logs
+        assert "X-Forwarded-Proto" in self._origin_logs
+        assert "administrator" in response.get_json()["message"]
+        assert TEST_CSRF_TOKEN not in self._origin_logs
+
+    def test_trusted_origins_accepts_https(self, app: IOCLookupApp, client: FlaskClient) -> None:
+        response = self._origin_post(app, client, "https://localhost", ["https://localhost"])
+        assert response.status_code != 403
+
+    def test_trusted_origins_rejects_http(self, app: IOCLookupApp, client: FlaskClient) -> None:
+        response = self._origin_post(app, client, "http://localhost", ["https://localhost"])
+        assert response.status_code == 403
+        assert "scheme mismatch" in self._origin_logs
+
+    @pytest.mark.parametrize("path", ["/", "/report"])
+    def test_session_pages_not_cacheable(self, app: IOCLookupApp, client: FlaskClient, path: str) -> None:
+        response = client.get(path)
+        assert "no-store" in response.headers["Cache-Control"]
+        assert "Cookie" in response.headers["Vary"]
+
+    def test_existing_session_cookie_still_no_store(self, app: IOCLookupApp, client: FlaskClient) -> None:
+        client.get("/report")  # receives the session cookie
+        response = client.get("/report")
+        assert "Set-Cookie" not in response.headers
+        assert "no-store" in response.headers["Cache-Control"]
+        assert "Cookie" in response.headers["Vary"]
+
+    def test_static_not_forced_no_store(self, app: IOCLookupApp, client: FlaskClient) -> None:
+        response = client.get("/static/css/bootstrap-grid.css")
+        assert response.status_code == 200
+        assert "no-store" not in response.headers.get("Cache-Control", "")
+
+    def test_json_error_without_session_unaffected(self, app: IOCLookupApp, client: FlaskClient) -> None:
+        response = client.get("/robots-missing.txt", headers={"Accept": "application/json"})
+        assert "no-store" not in response.headers.get("Cache-Control", "")
+
+    def test_session_cookie_secure_flag(self, app: IOCLookupApp, client: FlaskClient) -> None:
+        original = app.config["SESSION_COOKIE_SECURE"]
+        app.config["SESSION_COOKIE_SECURE"] = True
+        try:
+            response = client.get("/report")
+        finally:
+            app.config["SESSION_COOKIE_SECURE"] = original
+        assert "Secure" in response.headers.get("Set-Cookie", "")
+
+    def test_trusted_origins_string_and_invalid(self, app: IOCLookupApp, client: FlaskClient) -> None:
+        from flask import Flask
+
+        from ioc_lookup.csrf import init_csrf
+
+        original = app.config.get("TRUSTED_ORIGINS")
+        try:
+            app.config["TRUSTED_ORIGINS"] = "http://Trusted.Example:80"
+            token = prime_csrf(client, identity=USER_ENV["HTTP_REMOTE_USER"])
+            response = client.post(
+                "/",
+                data={**CSRF_ENDPOINTS["/"], "csrf_token": token},
+                headers={"Origin": "http://trusted.example"},
+                environ_base=USER_ENV,
+            )
+            assert response.status_code == 200
+        finally:
+            app.config["TRUSTED_ORIGINS"] = original
+        bad = Flask("bad")
+        bad.config["TRUSTED_ORIGINS"] = ["not-an-origin"]
+        with pytest.raises(ValueError, match="TRUSTED_ORIGINS"):
+            init_csrf(bad)
+
+    def test_rejection_log_escapes_and_truncates(self, app: IOCLookupApp, client: FlaskClient) -> None:
+        with patch.object(app.logger, "warning") as warning:
+            client.post("/", data={}, headers={"Origin": "http://evil.example/\x1b[31mX" + "a" * 500})
+        message = warning.call_args[0][0]
+        assert "\x1b" not in message
+        assert "a" * 201 not in message
+
+    def test_error_page_shows_description(self, app: IOCLookupApp, client: FlaskClient) -> None:
+        prime_csrf(client)
+        response = client.post("/", data={}, headers={"Origin": TEST_ORIGIN})
+        assert response.status_code == 400
+        assert b"missing, invalid or expired" in response.data
+
+    def test_authenticated_client_json_uses_header_token(
+        self, app: IOCLookupApp, authenticated_client: AuthenticatedClient
+    ) -> None:
+        response = authenticated_client.post("/", json={"search": "192.168.1.100"})
+        assert response.status_code == 200

@@ -1,6 +1,7 @@
 __author__ = "lundberg"
 
-from collections.abc import Iterator
+import logging
+from collections.abc import Iterator, Mapping, MutableMapping
 from contextlib import contextmanager
 from copy import copy
 from dataclasses import dataclass, field
@@ -175,6 +176,61 @@ def is_trusted_user(userid: str) -> bool:
         return True
     current_ioc_lookup_app.logger.debug(f"User with id {userid} IS NOT a trusted user")
     return False
+
+
+SESSION_COOKIE_DEFAULTS: dict[str, Any] = {
+    "SESSION_COOKIE_NAME": "ioc_lookup_session",
+    "SESSION_COOKIE_SECURE": True,
+    "SESSION_COOKIE_SAMESITE": "Lax",
+    "SESSION_COOKIE_HTTPONLY": True,
+}
+
+
+def resolve_security_settings(yaml_config: Mapping[str, Any], env: Mapping[str, str]) -> dict[str, Any]:
+    """
+    Resolve SECRET_KEY (env IOC_LOOKUP_SECRET_KEY wins over YAML) and the SESSION_COOKIE_* settings
+    (YAML value if set and not null, else the secure default). Raises ValueError if there is no secret key.
+    """
+    secret_key = env.get("IOC_LOOKUP_SECRET_KEY") or yaml_config.get("SECRET_KEY")
+    if not secret_key:
+        raise ValueError("SECRET_KEY must be set in the config file or in environment variable IOC_LOOKUP_SECRET_KEY")
+    resolved: dict[str, Any] = {"SECRET_KEY": secret_key}
+    for key, default in SESSION_COOKIE_DEFAULTS.items():
+        value = yaml_config.get(key)
+        resolved[key] = default if value is None else value
+    return resolved
+
+
+def apply_security_settings(
+    config: MutableMapping[str, Any], yaml_config: Mapping[str, Any], env: Mapping[str, str], logger: logging.Logger
+) -> None:
+    """Resolve security settings into config. On failure log the error and raise RuntimeError."""
+    try:
+        config.update(resolve_security_settings(yaml_config, env))
+    except ValueError as e:
+        logger.error(str(e))
+        raise RuntimeError(str(e)) from None
+
+
+def load_api_keys(raw: object, logger: logging.Logger) -> dict[str, str]:
+    """Validate loaded api keys. On failure log the error and raise RuntimeError (never including key values)."""
+    try:
+        return validate_api_keys(raw)
+    except ValueError as e:
+        logger.error(str(e))
+        raise RuntimeError(str(e)) from None
+
+
+def validate_api_keys(raw: object) -> dict[str, str]:
+    """Return the api key -> eppn mapping, raising ValueError (never including key values) if malformed."""
+    if raw is None:
+        return {}
+    if not isinstance(raw, dict):
+        raise ValueError("api_keys must be a mapping of api key to eppn")
+    bad = sum(1 for k, v in raw.items() if not (isinstance(k, str) and k and isinstance(v, str) and v.strip()))
+    if bad:
+        raise ValueError(f"api_keys has {bad} invalid entries, expected non-empty string key -> non-empty string eppn")
+    return dict(raw)
 
 
 def get_org_domain(userid: str) -> str:

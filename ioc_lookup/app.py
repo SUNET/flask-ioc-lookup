@@ -16,20 +16,24 @@ from werkzeug import Response as WerkzeugResponse
 from werkzeug.middleware.proxy_fix import ProxyFix
 from whitenoise import WhiteNoise
 
+from ioc_lookup.csrf import init_csrf
 from ioc_lookup.ioc_lookup_app import IOCLookupApp, TrustedOrg
 from ioc_lookup.log import init_logging
 from ioc_lookup.misp_api import TLP, AttrType, MISPApi, RequestException
 from ioc_lookup.misp_attributes import SUPPORTED_TYPES, Attr
 from ioc_lookup.parse import ParseException, parse_item
+from ioc_lookup.slack_signature import verify_slack_signature
 from ioc_lookup.utils import (
     EventInfoException,
     ReportData,
     SightingsData,
     TagParseException,
     User,
+    apply_security_settings,
     get_ipaddr_or_eppn,
     get_sightings_data,
     get_user,
+    load_api_keys,
     misp_api_for,
     request_to_data,
     utc_now,
@@ -48,20 +52,28 @@ except FileNotFoundError as e:
 
 # Init app
 app = IOCLookupApp(__name__)
-app.config.from_mapping(config)
+yaml_config: dict[str, Any] = config if isinstance(config, dict) else {}
+app.config.from_mapping(yaml_config)
+if not app.config.get("MAX_CONTENT_LENGTH"):
+    app.config["MAX_CONTENT_LENGTH"] = 1024 * 1024
+if environ.get("IOC_LOOKUP_SLACK_SIGNING_SECRET"):
+    app.config["SLACK_SIGNING_SECRET"] = environ["IOC_LOOKUP_SLACK_SIGNING_SECRET"]
+app.config.setdefault("TRUSTED_ORIGINS", [])
 # Init logging
 app.config.setdefault("LOG_LEVEL", "INFO")
 app.config.setdefault("LOG_COLORIZE", False)
 init_logging(level=app.config["LOG_LEVEL"], colorize=app.config["LOG_COLORIZE"])
+# SECRET_KEY and session cookie settings must be in app.config before any session use (CSRF, limiter, requests)
+apply_security_settings(app.config, yaml_config, environ, app.logger)
 # Init static files
-app.wsgi_app = WhiteNoise(app.wsgi_app, root=config.get("STATIC_FILES", "ioc_lookup/static/"))  # type: ignore[method-assign]
+app.wsgi_app = WhiteNoise(app.wsgi_app, root=yaml_config.get("STATIC_FILES", "ioc_lookup/static/"))  # type: ignore[method-assign]
 # Init trusted user list
 if app.config.get("TRUSTED_USERS"):
     try:
         with open(app.config["TRUSTED_USERS"]) as f:
             loaded_yaml = yaml.safe_load(f)
             app.trusted_users = loaded_yaml["eppn"]
-            app.api_keys = loaded_yaml["api_keys"]
+            app.api_keys = load_api_keys(loaded_yaml.get("api_keys"), app.logger)
         app.logger.info("Loaded trusted user list and api keys")
         app.logger.debug(f"Trusted user list: {app.trusted_users}")
         app.logger.debug(f"Trusted user with api keys: {app.api_keys.values()}")
@@ -114,18 +126,29 @@ except Exception:
     SLACK_ID = None
     app.logger.error("Could not initialize slack webclient")
 
+
 # Init rate limiting
-limiter = Limiter(app=app, key_func=get_ipaddr_or_eppn)
+def rate_limit_from_config() -> str:
+    return app.config.get("REQUEST_RATE_LIMIT", "1/second")
+
+
+# Default limits are enforced in flask-limiter's before_request, which runs before the CSRF hook, so rejected
+# (CSRF/Origin) requests are rate limited too. Counters are per route; routes carry no @limiter.limit of their own.
+limiter = Limiter(
+    app=app,
+    key_func=get_ipaddr_or_eppn,
+    default_limits=[rate_limit_from_config],
+    default_limits_exempt_when=lambda: request.endpoint == "static",
+)
 
 # Init cache
 cache = Cache(app)
 
+# Init CSRF protection
+init_csrf(app, exempt_endpoints={"slacksearch": verify_slack_signature})
+
 # Proxyfix
 app.wsgi_app = ProxyFix(app.wsgi_app)  # type: ignore[method-assign]
-
-
-def rate_limit_from_config() -> str:
-    return app.config.get("REQUEST_RATE_LIMIT", "1/second")
 
 
 @app.template_filter("ts")
@@ -158,6 +181,13 @@ def misp_request_error(exception: Exception) -> tuple[Response, int] | str:
     if "application/json" in request.accept_mimetypes.values():
         return jsonify({"status": 500, "message": "MISP request error", "details": str(exception)}), 500
     return render_template("misp_request_error.jinja2", message=str(exception))
+
+
+@app.errorhandler(429)
+def custom_429(error: Exception) -> Response | tuple[Response, int]:
+    if request.is_json or request.accept_mimetypes.best_match(["application/json", "text/html"]) == "application/json":
+        return jsonify({"status": 429, "message": "Too many requests"}), 429
+    return Response("429 Too Many Requests", 429)
 
 
 @app.errorhandler(401)
@@ -260,7 +290,6 @@ def do_add_event(user: User, report_data: ReportData, extra_tags: list[str] | No
 @app.route("/", defaults={"search_query": None}, methods=["GET", "POST"])
 @app.route("/<search_query>", methods=["GET", "POST"])
 @accept_fallback
-@limiter.limit(rate_limit_from_config)
 def index(search_query: str | None = None) -> str:
     user = get_user()
     search_context = SearchContext(
@@ -345,12 +374,12 @@ def index_json(search_query: str | None = None) -> Response:
 
 
 @app.route("/slack/ioc-lookup", methods=["POST"])
-@limiter.limit(rate_limit_from_config)
 def slacksearch() -> tuple[Response, int]:
     user = get_user()  # form.get('user_name')
     form = request.form
     channel_id = form.get("channel_id")
-    assert channel_id is not None
+    if channel_id is None:
+        abort(400)
     search_query = form.get("text")
     search_context = SearchContext(
         user=user,
@@ -383,7 +412,6 @@ def slacksearch() -> tuple[Response, int]:
 
 @app.route("/report", methods=["GET", "POST"])
 @accept_fallback
-@limiter.limit(rate_limit_from_config)
 def report() -> str:
     user = get_user()
     default_args = {
@@ -464,7 +492,6 @@ def report_json() -> Response:
 
 
 @app.route("/report-sighting", methods=["POST"])
-@limiter.limit(rate_limit_from_config)
 def report_sighting() -> WerkzeugResponse:
     if current_app.config["SIGHTINGS_ENABLED"] is False:
         return abort(401)
@@ -498,7 +525,6 @@ def report_sighting() -> WerkzeugResponse:
 
 
 @app.route("/remove-sighting", methods=["POST"])
-@limiter.limit(rate_limit_from_config)
 def remove_sighting() -> WerkzeugResponse:
     if current_app.config["SIGHTINGS_ENABLED"] is False:
         return abort(401)

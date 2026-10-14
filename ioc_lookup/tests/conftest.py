@@ -20,6 +20,10 @@ from ioc_lookup.misp_api import MISPApi
 
 __author__ = "lundberg"
 
+TEST_ORIGIN = "http://localhost"
+TEST_CSRF_TOKEN = "test-csrf-token-value"
+TEST_API_KEY = "test-api-key-123"
+
 
 # Sample test data for MISP responses
 SAMPLE_ATTRIBUTES = [
@@ -319,7 +323,7 @@ def app(test_config_path: Path) -> Generator[IOCLookupApp]:
         test_app.trusted_orgs = {
             "test.org": TrustedOrg(domain="test.org", misp_api_key="test-api-key"),
         }
-        test_app.api_keys = {"test-api-key-123": {"eppn": "api-user@test.org"}}
+        test_app.api_keys = {"test-api-key-123": "api-user@test.org"}
 
         # Replace MISP APIs with mocks
         test_app.misp_apis = {
@@ -335,6 +339,25 @@ def app(test_config_path: Path) -> Generator[IOCLookupApp]:
 def client(app: IOCLookupApp) -> FlaskClient:
     """Create a test client for the application."""
     return app.test_client()
+
+
+def prime_csrf(client: FlaskClient, token: str = TEST_CSRF_TOKEN, identity: str = "") -> str:
+    """Store a CSRF token bound to the REMOTE_USER identity (empty = none) in the client's session."""
+    with client.session_transaction() as sess:
+        sess["csrf_token"] = token
+        sess["csrf_identity"] = identity
+    return token
+
+
+def csrf_form_post(client: FlaskClient, url: str, data: dict[str, Any] | None = None, **kwargs: Any) -> Any:  # noqa: ANN401
+    """POST form data with a valid CSRF token and same-origin Origin header."""
+    identity = kwargs.get("environ_base", {}).get("HTTP_REMOTE_USER", "")
+    token = prime_csrf(client, identity=identity)
+    form = dict(data or {})
+    form["csrf_token"] = token
+    headers = dict(kwargs.pop("headers", {}))
+    headers.setdefault("Origin", TEST_ORIGIN)
+    return client.post(url, data=form, headers=headers, **kwargs)
 
 
 class AuthenticatedClient:
@@ -356,8 +379,19 @@ class AuthenticatedClient:
     def get(self, *args: Any, **kwargs: Any) -> Any:  # noqa: ANN401
         return self._client.get(*args, **self._add_auth_headers(kwargs))
 
-    def post(self, *args: Any, **kwargs: Any) -> Any:  # noqa: ANN401
-        return self._client.post(*args, **self._add_auth_headers(kwargs))
+    def post(self, *args: Any, csrf: bool = True, **kwargs: Any) -> Any:  # noqa: ANN401
+        kwargs = self._add_auth_headers(kwargs)
+        if csrf:
+            token = prime_csrf(self._client, identity=self._user)
+            headers = kwargs.setdefault("headers", {})
+            headers.setdefault("Origin", TEST_ORIGIN)
+            data = kwargs.get("data")
+            if "json" in kwargs or not (data is None or isinstance(data, dict)):
+                # JSON or raw bodies cannot carry a form field, send the token as a header
+                headers.setdefault("X-CSRF-Token", token)
+            else:
+                kwargs["data"] = {**(data or {}), "csrf_token": token}
+        return self._client.post(*args, **kwargs)
 
     def set_user(self, user: str) -> None:
         self._user = user
@@ -367,6 +401,12 @@ class AuthenticatedClient:
 def authenticated_client(app: IOCLookupApp) -> AuthenticatedClient:
     """Create a test client with authentication headers."""
     return AuthenticatedClient(app)
+
+
+@pytest.fixture
+def api_token_headers() -> dict[str, str]:
+    """Headers for a valid API client."""
+    return {"API-TOKEN": TEST_API_KEY, "Accept": "application/json"}
 
 
 @pytest.fixture

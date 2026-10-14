@@ -1,3 +1,4 @@
+{% from "_csrf.jinja2" import csrf_field %}
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -12,6 +13,7 @@
     <h3 class="pt-3">IOC lookup</h3>
     <p class="float-right">Logged in as: {{ search_context.user.identifier }}</p>
     <form method="post">
+        {{ csrf_field() }}
       <div class="form-group">
         <label for="inputQuery1">IOC entity search</label>
         <input type="text" class="form-control {% if search_context.error %}is-invalid{% endif %}" id="inputQuery1" name="search_query" aria-describedby="searchQueryHelp" placeholder="Search for {% for typ in search_context.supported_types %}{{ typ }}{% if not loop.last %}, {% endif %}{% endfor %}">
@@ -58,6 +60,7 @@
                 {% endfor %}
             </div>
             <form method="post">
+                {{ csrf_field() }}
                 <input type="hidden" id="searchQuery3" name="search_query" value="{{ search_context.parsed_search_query.value }}">
                 <input type="hidden" id="inputRelatedResultsToggle3" name="related_results" value="yes">
                 <input type="hidden" id="inputRelatedResultsLimit3" name="limit_related_results" value="yes">
@@ -72,6 +75,7 @@
                             {% if search_result.sightings_data.can_add_sighting %}
                                 <div class="btn-group mr-2" role="group">
                                     <form class="form-inline" action="{{ url_for('report_sighting') }}" method="post">
+                                        {{ csrf_field() }}
                                         <input type="hidden" name="search_query" value="{{ search_context.parsed_search_query.value }}" />
                                         <input type="hidden" name="type" value="0" />
                                         <span class="d-inline-block" tabindex="0" {% if not search_context.user.in_trusted_org %}data-toggle="tooltip" data-placement="bottom" title="Only trusted organizations can vote"{% endif %}>
@@ -82,6 +86,7 @@
                             {% else %}
                                 <div class="btn-group mr-2" role="group">
                                     <form class="form-inline" action="{{ url_for('remove_sighting') }}" method="post">
+                                        {{ csrf_field() }}
                                         <input type="hidden" name="search_query" value="{{ search_context.parsed_search_query.value }}" />
                                         <input type="hidden" name="type" value="0" />
                                         <span class="d-inline-block" tabindex="0" {% if not search_context.user.in_trusted_org %}data-toggle="tooltip" data-placement="bottom" title="Only trusted organizations can vote"{% endif %}>
@@ -93,6 +98,7 @@
                             {% if search_result.sightings_data.can_add_false_positive %}
                                 <div class="btn-group mr-2" role="group">
                                     <form class="form-inline" action="{{ url_for('report_sighting') }}" method="post">
+                                        {{ csrf_field() }}
                                         <input type="hidden" name="search_query" value="{{ search_context.parsed_search_query.value }}" />
                                         <input type="hidden" name="type" value="1" />
                                         <span class="d-inline-block" {% if not search_context.user.in_trusted_org %}tabindex="0" data-toggle="tooltip" data-placement="bottom" title="Only trusted organizations can vote"{% endif %}>
@@ -103,6 +109,7 @@
                             {% else %}
                                 <div class="btn-group mr-2" role="group">
                                     <form class="form-inline" action="{{ url_for('remove_sighting') }}" method="post">
+                                        {{ csrf_field() }}
                                         <input type="hidden" name="search_query" value="{{ search_context.parsed_search_query.value }}" />
                                         <input type="hidden" name="type" value="1" />
                                         <span class="d-inline-block" tabindex="0" {% if not search_context.user.in_trusted_org %}data-toggle="tooltip" data-placement="bottom" title="Only trusted organizations can vote"{% endif %}>
@@ -120,6 +127,7 @@
             <hr>
             <h6 class="mt-2">Report event</h6>
             <form class="form" action="{{ url_for('report') }}" method="post">
+                {{ csrf_field() }}
               <div class="form-row">
                 <div class="form-group col-md-4">
                   <label for="reportQuery1" class="sr-only">{% for typ in search_context.supported_types %}{{ typ }}{% if not loop.last %}, {% endif %}{% endfor %}</label>
@@ -179,6 +187,7 @@
             <div class="btn-toolbar mt-1" role="toolbar" aria-label="Toolbar with button groups">
                 <div class="btn-group mr-2" role="group">
                     <form method="post">
+                        {{ csrf_field() }}
                         <input type="hidden" id="inputQuery2" name="search_query" value="{{ search_context.parsed_search_query.value }}">
                         <input type="hidden" id="inputRelatedResultsToggle2" name="related_results" value="yes">
                         <input type="hidden" id="inputRelatedResultsLimit2" name="limit_related_results" value="no">
