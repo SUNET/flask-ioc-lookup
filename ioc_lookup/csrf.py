@@ -24,6 +24,10 @@ class CSRFError(BadRequest):
     description = "The security token is missing, invalid or expired."
 
 
+class VerificationError(Forbidden):
+    description = "Request verification failed."
+
+
 class OriginError(Forbidden):
     description = "The request origin is not allowed. If this keeps happening, contact the administrator."
 
@@ -181,9 +185,11 @@ def csrf_protect(exempt_endpoints: Mapping[str, ExemptVerifier | None]) -> None:
         # No verifier means unconditionally exempt; otherwise exempt only if the verifier succeeds (fail closed)
         if verifier is None or verifier():
             return
+        # Fail closed: a verifier-backed endpoint is never reachable via session token, Origin or API key
         current_app.logger.warning(
             f"Exemption verification failed: endpoint={endpoint} reason={getattr(g, 'exempt_failure_reason', None)}"
         )
+        raise VerificationError()
     if _is_api_token_request():
         return
     try:
@@ -233,3 +239,4 @@ def init_csrf(app: Flask, exempt_endpoints: Iterable[str] | Mapping[str, ExemptV
 
     app.register_error_handler(CSRFError, _handle)
     app.register_error_handler(OriginError, _handle)
+    app.register_error_handler(VerificationError, _handle)

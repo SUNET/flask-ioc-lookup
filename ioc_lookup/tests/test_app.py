@@ -1312,6 +1312,51 @@ class TestCsrfProtection:
     def test_max_content_length_default(self, app: IOCLookupApp) -> None:
         assert app.config["MAX_CONTENT_LENGTH"]
 
+    def _slack_same_origin_post(self, client: FlaskClient, **kwargs: Any) -> Any:  # noqa: ANN401
+        token = prime_csrf(client)
+        return client.post(
+            "/slack/ioc-lookup",
+            data={"channel_id": "C123", "text": "example.com", "csrf_token": token},
+            headers={"Origin": TEST_ORIGIN, **kwargs.pop("headers", {})},
+            **kwargs,
+        )
+
+    def test_slack_session_token_without_signature_rejected(
+        self, app: IOCLookupApp, client: FlaskClient, slack_secret: None
+    ) -> None:
+        with patch("ioc_lookup.app.slackclient.chat_postMessage") as post_message:
+            response = self._slack_same_origin_post(client)
+        assert response.status_code == 403
+        post_message.assert_not_called()
+
+    def test_slack_session_token_bad_signature_rejected(
+        self, app: IOCLookupApp, client: FlaskClient, slack_secret: None
+    ) -> None:
+        headers = {"X-Slack-Request-Timestamp": str(int(time.time())), "X-Slack-Signature": "v0=" + "0" * 64}
+        with patch("ioc_lookup.app.slackclient.chat_postMessage") as post_message:
+            response = self._slack_same_origin_post(client, headers=headers)
+        assert response.status_code == 403
+        post_message.assert_not_called()
+
+    def test_slack_session_token_no_secret_rejected(self, app: IOCLookupApp, client: FlaskClient) -> None:
+        app.config.pop("SLACK_SIGNING_SECRET", None)
+        with patch("ioc_lookup.app.slackclient.chat_postMessage") as post_message:
+            response = self._slack_same_origin_post(client)
+        assert response.status_code == 403
+        post_message.assert_not_called()
+
+    def test_slack_api_token_does_not_bypass_signature(
+        self, app: IOCLookupApp, client: FlaskClient, slack_secret: None
+    ) -> None:
+        with patch("ioc_lookup.app.slackclient.chat_postMessage") as post_message:
+            response = client.post(
+                "/slack/ioc-lookup",
+                json={"channel_id": "C123", "text": "example.com"},
+                headers={"API-TOKEN": TEST_API_KEY, "Accept": "application/json"},
+            )
+        assert response.status_code == 403
+        post_message.assert_not_called()
+
     def test_slack_missing_channel_id(self, app: IOCLookupApp, client: FlaskClient, slack_secret: None) -> None:
         with patch("ioc_lookup.app.slackclient.chat_postMessage") as post_message:
             response = self._slack_post(client, data={"text": "example.com"})
