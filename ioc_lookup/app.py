@@ -1,3 +1,4 @@
+import re
 import sys
 import urllib.parse
 from dataclasses import dataclass, field
@@ -11,12 +12,13 @@ from flask import Response, abort, current_app, jsonify, redirect, render_templa
 from flask_accept import accept_fallback
 from flask_caching import Cache
 from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 from pymisp import PyMISPError
 from werkzeug import Response as WerkzeugResponse
 from werkzeug.middleware.proxy_fix import ProxyFix
 from whitenoise import WhiteNoise
 
-from ioc_lookup.csrf import init_csrf
+from ioc_lookup.csrf import _safe_log_value, init_csrf
 from ioc_lookup.ioc_lookup_app import IOCLookupApp, TrustedOrg
 from ioc_lookup.log import init_logging
 from ioc_lookup.misp_api import TLP, AttrType, MISPApi, RequestException
@@ -32,11 +34,13 @@ from ioc_lookup.utils import (
     apply_security_settings,
     get_ipaddr_or_eppn,
     get_sightings_data,
+    get_slack_user,
     get_user,
     load_api_keys,
     misp_api_for,
     request_to_data,
     utc_now,
+    validate_rate_limits,
 )
 
 # Read config
@@ -65,6 +69,7 @@ app.config.setdefault("LOG_COLORIZE", False)
 init_logging(level=app.config["LOG_LEVEL"], colorize=app.config["LOG_COLORIZE"])
 # SECRET_KEY and session cookie settings must be in app.config before any session use (CSRF, limiter, requests)
 apply_security_settings(app.config, yaml_config, environ, app.logger)
+validate_rate_limits(app.config, app.logger)
 # Init static files
 app.wsgi_app = WhiteNoise(app.wsgi_app, root=yaml_config.get("STATIC_FILES", "ioc_lookup/static/"))  # type: ignore[method-assign]
 # Init trusted user list
@@ -130,14 +135,35 @@ except Exception:
 
 # Init rate limiting
 def rate_limit_from_config() -> str:
+    # Read per request. The Slack endpoint may have its own limit, falling back to REQUEST_RATE_LIMIT
+    if request.endpoint == "slacksearch":
+        slack_limit = app.config.get("SLACK_RATE_LIMIT")
+        if isinstance(slack_limit, str) and slack_limit.strip():
+            return slack_limit
     return app.config.get("REQUEST_RATE_LIMIT", "1/second")
+
+
+def rate_limit_key() -> str:
+    """
+    Rate limit key. Slack requests never use REMOTE_USER/API-TOKEN: verified ones are keyed per Slack workspace
+    (team_id), unverified ones per remote address so forged fields cannot reset or spread the bucket.
+    Everything else keeps the user identity (and 401 without one outside debug mode).
+    """
+    if request.endpoint == "slacksearch":
+        # Must run before anything reads request.form: verification reads the raw body with get_data(cache=True)
+        if verify_slack_signature():
+            team_id = request.form.get("team_id", "")
+            return f"slack:{team_id}" if re.fullmatch(r"[A-Z0-9]{1,32}", team_id) else "slack"
+        return f"slack-unverified:{get_remote_address()}"
+    return get_ipaddr_or_eppn()
 
 
 # Default limits are enforced in flask-limiter's before_request, which runs before the CSRF hook, so rejected
 # (CSRF/Origin) requests are rate limited too. Counters are per route; routes carry no @limiter.limit of their own.
+# The key is rate_limit_key(): per user identity, or per Slack workspace for the Slack endpoint.
 limiter = Limiter(
     app=app,
-    key_func=get_ipaddr_or_eppn,
+    key_func=rate_limit_key,
     default_limits=[rate_limit_from_config],
     default_limits_exempt_when=lambda: request.endpoint == "static",
 )
@@ -376,11 +402,18 @@ def index_json(search_query: str | None = None) -> Response:
 
 @app.route("/slack/ioc-lookup", methods=["POST"])
 def slacksearch() -> tuple[Response, int]:
-    user = get_user()  # form.get('user_name')
+    # Defence in depth: the CSRF hook already rejects unverified requests
+    if not verify_slack_signature():
+        abort(403)
+    user = get_slack_user()
     form = request.form
     channel_id = form.get("channel_id")
     if channel_id is None:
         abort(400)
+    app.logger.info(
+        f"Slack search: team_id={_safe_log_value(form.get('team_id'))} "
+        f"user_id={_safe_log_value(form.get('user_id'))} channel_id={_safe_log_value(channel_id)}"
+    )
     search_query = form.get("text")
     search_context = SearchContext(
         user=user,

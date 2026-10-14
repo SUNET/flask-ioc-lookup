@@ -26,6 +26,16 @@ reaches it can forge these headers and defeat the scheme strictness of `TRUSTED_
 proxy should reach the app, and `forwarded_allow_ips` should be set to the proxy's address. The session
 token check still applies either way.
 
+## Slack integration
+
+The `/slack/ioc-lookup` endpoint is authenticated only by the Slack request signature
+(`SLACK_SIGNING_SECRET`). The reverse proxy must not put it behind SSO, and should strip any
+client-supplied `Remote-User` and `API-TOKEN` headers. Lookups run as a fixed, non-trusted identity
+against the default MISP key; `REMOTE_USER` and `API-TOKEN` are never used for Slack requests.
+The Slack rate limit is applied per Slack workspace (`team_id`) and defaults to `REQUEST_RATE_LIMIT`;
+set the optional `SLACK_RATE_LIMIT` to give Slack its own limit. When it is hit Slack shows
+`dispatch_failed`.
+
 ## Upgrade notes (breaking changes)
 
 - `SECRET_KEY` (or `IOC_LOOKUP_SECRET_KEY`) is now required.
@@ -36,6 +46,10 @@ token check still applies either way.
 - Set `TRUSTED_ORIGINS` in production, especially behind a proxy or load balancer that terminates TLS.
 - `SESSION_COOKIE_SECURE` now defaults to true; set it to `false` for plain-HTTP development.
 - `MAX_CONTENT_LENGTH` defaults to 1 MiB.
+- The Slack endpoint now works when `DEBUG` is false (it previously returned 401 without a `REMOTE_USER`).
+  Slack requests never use `REMOTE_USER` or `API-TOKEN`.
+- New optional `SLACK_RATE_LIMIT` (default: `REQUEST_RATE_LIMIT`). Consider raising it, since Slack shows
+  `dispatch_failed` when a request is rate limited.
 - `REQUEST_RATE_LIMIT` is now enforced before the CSRF checks, so rejected requests count against it too.
   It applies per route to every non-static route (previously only the decorated views).
 

@@ -15,6 +15,7 @@ SLACK_MAX_AGE_SECONDS = 300
 
 SLACK_MAX_BODY_BYTES = 65536
 FAILURE_REASON_KEY = "exempt_failure_reason"
+VERIFIED_KEY = "slack_signature_verified"
 
 
 def slack_signature_failure_reason() -> str | None:
@@ -45,7 +46,14 @@ def slack_signature_failure_reason() -> str | None:
 
 
 def verify_slack_signature() -> bool:
-    """True only if a signing secret is configured and the request carries a valid, fresh Slack signature."""
+    """True only if a signing secret is configured and the request carries a valid, fresh Slack signature.
+
+    The result is memoised per request.
+    """
+    cached = getattr(g, VERIFIED_KEY, None)
+    if cached is not None:
+        return bool(cached)
     reason = slack_signature_failure_reason()
     setattr(g, FAILURE_REASON_KEY, reason)
+    setattr(g, VERIFIED_KEY, reason is None)
     return reason is None

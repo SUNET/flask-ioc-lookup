@@ -157,6 +157,18 @@ def get_ipaddr_or_eppn() -> str:
     return identifier
 
 
+SLACK_USER_IDENTIFIER = "slack"
+
+
+def get_slack_user() -> User:
+    """
+    The fixed identity for Slack requests. A constant, never derived from request data: Slack callers get no
+    trusted rights. org_domain "default" is a key of misp_apis, so lookups use the default MISP key and never
+    lazy-load an org specific key.
+    """
+    return User(identifier=SLACK_USER_IDENTIFIER, is_trusted_user=False, in_trusted_org=False, org_domain="default")
+
+
 def get_user() -> User:
     identifier = get_ipaddr_or_eppn()
     return User(
@@ -222,6 +234,22 @@ def load_api_keys(raw: object, logger: logging.Logger) -> dict[str, str]:
     except ValueError as e:
         logger.error(str(e))
         raise RuntimeError(str(e)) from None
+
+
+def validate_rate_limits(config: Mapping[str, Any], logger: logging.Logger) -> None:
+    """Check the rate limit strings parse. On failure log the error and raise RuntimeError."""
+    from limits import parse_many
+
+    for key in ("REQUEST_RATE_LIMIT", "SLACK_RATE_LIMIT"):
+        value = config.get(key)
+        if value is None or (isinstance(value, str) and not value.strip()):
+            continue
+        try:
+            parse_many(value)
+        except Exception:
+            message = f"{key} is not a valid rate limit string, expected for example '10/minute'"
+            logger.error(message)
+            raise RuntimeError(message) from None
 
 
 def validate_api_keys(raw: object) -> dict[str, str]:

@@ -16,6 +16,7 @@ from ioc_lookup.misp_api import MISPApi
 from ioc_lookup.misp_attributes import Attr, AttrType
 from ioc_lookup.parse import InputError, ParseException, defanged_url, get_canonical_url, parse_items, undefang_url
 from ioc_lookup.utils import (
+    User,
     apply_security_settings,
     load_api_keys,
     resolve_security_settings,
@@ -906,6 +907,26 @@ def _state(app: IOCLookupApp) -> list[tuple[int, int]]:
     return [(len(api.pymisp._events), len(api.pymisp._sightings)) for api in app.misp_apis.values()]  # type: ignore[union-attr]
 
 
+SLACK_SECRET = "slack-test-secret"
+
+
+def slack_post(
+    client: FlaskClient,
+    data: dict[str, str] | None = None,
+    secret: str | None = SLACK_SECRET,
+    timestamp: str | None = None,
+    signature: str | None = None,
+    headers: bool = True,
+) -> Any:  # noqa: ANN401
+    body = urlencode(data if data is not None else {"channel_id": "C123", "text": "invalid!@#$"})
+    ts = timestamp if timestamp is not None else str(int(time.time()))
+    sig = signature
+    if sig is None:
+        sig = "v0=" + hmac.new((secret or "x").encode(), f"v0:{ts}:{body}".encode(), hashlib.sha256).hexdigest()
+    hdrs = {"X-Slack-Request-Timestamp": ts, "X-Slack-Signature": sig} if headers else {}
+    return client.post("/slack/ioc-lookup", data=body, content_type="application/x-www-form-urlencoded", headers=hdrs)
+
+
 class TestCsrfProtection:
     """Tests for CSRF protection of unsafe requests."""
 
@@ -1219,26 +1240,9 @@ class TestCsrfProtection:
         )
         assert response.status_code == 200
 
-    SLACK_SECRET = "slack-test-secret"
+    SLACK_SECRET = SLACK_SECRET
 
-    def _slack_post(
-        self,
-        client: FlaskClient,
-        data: dict[str, str] | None = None,
-        secret: str | None = SLACK_SECRET,
-        timestamp: str | None = None,
-        signature: str | None = None,
-        headers: bool = True,
-    ) -> Any:  # noqa: ANN401
-        body = urlencode(data if data is not None else {"channel_id": "C123", "text": "invalid!@#$"})
-        ts = timestamp if timestamp is not None else str(int(time.time()))
-        sig = signature
-        if sig is None:
-            sig = "v0=" + hmac.new((secret or "x").encode(), f"v0:{ts}:{body}".encode(), hashlib.sha256).hexdigest()
-        hdrs = {"X-Slack-Request-Timestamp": ts, "X-Slack-Signature": sig} if headers else {}
-        return client.post(
-            "/slack/ioc-lookup", data=body, content_type="application/x-www-form-urlencoded", headers=hdrs
-        )
+    _slack_post = staticmethod(slack_post)
 
     @pytest.fixture
     def slack_secret(self, app: IOCLookupApp) -> Generator[None]:
@@ -1506,3 +1510,159 @@ class TestCsrfProtection:
     ) -> None:
         response = authenticated_client.post("/", json={"search": "192.168.1.100"})
         assert response.status_code == 200
+
+
+class TestSlackProductionMode:
+    """Slack requests must work with DEBUG off, without any user identity, as a fixed non-trusted user."""
+
+    _slack_post = staticmethod(slack_post)
+    SLACK_SECRET = SLACK_SECRET
+
+    @pytest.fixture(autouse=True)
+    def prod_mode(self, app: IOCLookupApp) -> Generator[None]:
+        from ioc_lookup.app import cache, limiter
+
+        app.config["DEBUG"] = False
+        app.config["SLACK_SIGNING_SECRET"] = self.SLACK_SECRET
+        limiter.reset()
+        cache.clear()
+        yield
+        app.config["DEBUG"] = True
+        app.config.pop("SLACK_SIGNING_SECRET", None)
+        limiter.reset()
+        cache.clear()
+
+    @pytest.fixture
+    def tight_limit(self, app: IOCLookupApp) -> Generator[None]:
+        original = app.config["REQUEST_RATE_LIMIT"]
+        app.config["REQUEST_RATE_LIMIT"] = "3/minute"
+        yield
+        app.config["REQUEST_RATE_LIMIT"] = original
+
+    def test_signed_request_without_identity(self, app: IOCLookupApp, client: FlaskClient) -> None:
+        with patch("ioc_lookup.app.slackclient.chat_postMessage") as post_message:
+            response = self._slack_post(client, data={"channel_id": "C123", "text": "malicious.example.com"})
+        assert response.status_code == 200
+        post_message.assert_called()
+        assert "events/view/" in post_message.call_args.kwargs["text"]
+
+    def test_fixed_slack_identity(self, app: IOCLookupApp, client: FlaskClient) -> None:
+        from ioc_lookup import app as app_module
+
+        with (
+            patch("ioc_lookup.app.slackclient.chat_postMessage"),
+            patch("ioc_lookup.app.do_search", wraps=app_module.do_search) as search,
+        ):
+            self._slack_post(client, data={"channel_id": "C123", "text": "malicious.example.com"})
+        assert search.call_args.kwargs["user"] == User("slack", False, False, "default")
+
+    def test_forged_identity_headers_ignored(self, app: IOCLookupApp, client: FlaskClient) -> None:
+        from ioc_lookup import app as app_module
+
+        body = urlencode({"channel_id": "C123", "text": "malicious.example.com"})
+        ts = str(int(time.time()))
+        sig = "v0=" + hmac.new(self.SLACK_SECRET.encode(), f"v0:{ts}:{body}".encode(), hashlib.sha256).hexdigest()
+        with (
+            patch("ioc_lookup.app.slackclient.chat_postMessage"),
+            patch("ioc_lookup.app.do_search", wraps=app_module.do_search) as search,
+        ):
+            response = client.post(
+                "/slack/ioc-lookup",
+                data=body,
+                content_type="application/x-www-form-urlencoded",
+                headers={"X-Slack-Request-Timestamp": ts, "X-Slack-Signature": sig, "API-TOKEN": TEST_API_KEY},
+                environ_base={"HTTP_REMOTE_USER": "trusted@test.org"},
+            )
+        assert response.status_code == 200
+        assert search.call_args.kwargs["user"] == User("slack", False, False, "default")
+
+    def test_unverified_requests_get_403_not_401(self, app: IOCLookupApp, client: FlaskClient) -> None:
+        with patch("ioc_lookup.app.slackclient.chat_postMessage") as post_message:
+            assert self._slack_post(client, signature="v0=" + "0" * 64).status_code == 403
+            assert self._slack_post(client, headers=False).status_code == 403
+            app.config.pop("SLACK_SIGNING_SECRET")
+            assert self._slack_post(client).status_code == 403
+        post_message.assert_not_called()
+
+    def test_non_slack_routes_still_need_identity(self, app: IOCLookupApp, client: FlaskClient) -> None:
+        assert client.get("/").status_code == 401
+        token = prime_csrf(client)
+        response = client.post(
+            "/report",
+            data={**CSRF_ENDPOINTS["/report"], "csrf_token": token},
+            headers={"Origin": TEST_ORIGIN},
+        )
+        assert response.status_code == 401
+
+    @pytest.mark.usefixtures("tight_limit")
+    def test_signed_requests_rate_limited_per_team(self, app: IOCLookupApp, client: FlaskClient) -> None:
+        def post(team: str) -> int:
+            with patch("ioc_lookup.app.slackclient.chat_postMessage"):
+                return int(
+                    self._slack_post(
+                        client, data={"channel_id": "C1", "text": "invalid!@#$", "team_id": team}
+                    ).status_code
+                )
+
+        assert [post("T1") for _ in range(4)] == [200, 200, 200, 429]
+        assert post("T2") == 200
+
+    @pytest.mark.usefixtures("tight_limit")
+    def test_forged_fields_do_not_reset_unsigned_bucket(self, app: IOCLookupApp, client: FlaskClient) -> None:
+        codes = []
+        for i in range(4):
+            body = urlencode({"channel_id": "C1", "text": "x", "team_id": f"T{i}"})
+            response = client.post(
+                "/slack/ioc-lookup",
+                data=body,
+                content_type="application/x-www-form-urlencoded",
+                environ_base={"HTTP_REMOTE_USER": f"user{i}@test.org"},
+            )
+            codes.append(response.status_code)
+        assert codes == [403, 403, 403, 429]
+
+    def test_body_still_parsed_after_key_func(self, app: IOCLookupApp, client: FlaskClient) -> None:
+        with patch("ioc_lookup.app.slackclient.chat_postMessage") as post_message:
+            response = self._slack_post(client, data={"channel_id": "C777", "text": "invalid!@#$", "team_id": "T9"})
+        assert response.status_code == 200
+        assert post_message.call_args.kwargs["channel"] == "C777"
+
+    @pytest.fixture
+    def slack_limit(self, app: IOCLookupApp) -> Generator[None]:
+        original = app.config["REQUEST_RATE_LIMIT"]
+        app.config["REQUEST_RATE_LIMIT"] = "3/minute"
+        yield
+        app.config["REQUEST_RATE_LIMIT"] = original
+        app.config.pop("SLACK_RATE_LIMIT", None)
+
+    def _slack_codes(self, client: FlaskClient, n: int) -> list[int]:
+        codes = []
+        for _ in range(n):
+            with patch("ioc_lookup.app.slackclient.chat_postMessage"):
+                codes.append(
+                    self._slack_post(client, data={"channel_id": "C1", "text": "x!", "team_id": "T1"}).status_code
+                )
+        return codes
+
+    @pytest.mark.usefixtures("slack_limit")
+    def test_slack_rate_limit_separate(self, app: IOCLookupApp, client: FlaskClient) -> None:
+        app.config["SLACK_RATE_LIMIT"] = "6/minute"
+        assert self._slack_codes(client, 7) == [200] * 6 + [429]
+        authed = [client.get("/report", environ_base=USER_ENV).status_code for _ in range(4)]
+        assert authed == [200, 200, 200, 429]
+
+    @pytest.mark.usefixtures("slack_limit")
+    @pytest.mark.parametrize("value", [None, "", "   "])
+    def test_slack_rate_limit_fallback(self, app: IOCLookupApp, client: FlaskClient, value: str | None) -> None:
+        if value is not None:
+            app.config["SLACK_RATE_LIMIT"] = value
+        assert self._slack_codes(client, 4) == [200, 200, 200, 429]
+
+    def test_invalid_rate_limit_rejected(self) -> None:
+        from ioc_lookup.utils import validate_rate_limits
+
+        validate_rate_limits({"REQUEST_RATE_LIMIT": "1/second", "SLACK_RATE_LIMIT": None}, MagicMock())
+        logger = MagicMock()
+        with pytest.raises(RuntimeError, match="SLACK_RATE_LIMIT"):
+            validate_rate_limits({"SLACK_RATE_LIMIT": "bogus"}, logger)
+        logger.error.assert_called_once()
