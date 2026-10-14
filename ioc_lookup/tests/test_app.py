@@ -726,26 +726,25 @@ class TestApiKeyPrivileges:
         add_event.assert_called_once()
         assert not add_event.call_args.kwargs["published"]
 
-    def test_api_key_mapped_to_trusted_org_can_vote(
-        self,
-        app: IOCLookupApp,
-        client: FlaskClient,
-        key_owner: Any,  # noqa: ANN401
+    @pytest.mark.parametrize("vote_type", ["0", "1"])
+    def test_trusted_org_user_can_vote(
+        self, app: IOCLookupApp, authenticated_client: AuthenticatedClient, vote_type: str
     ) -> None:
-        key_owner("someone@test.org")
-        response = client.post(
-            "/report-sighting",
-            json={"search_query": "malicious.example.com", "type": "0"},
-            headers={"API-TOKEN": TEST_API_KEY, "Accept": "application/json"},
+        before = _state(app)
+        response = authenticated_client.post(
+            "/report-sighting", data={"search_query": "malicious.example.com", "type": vote_type}
         )
-        assert response.status_code != 401
-        key_owner("someone@untrusted.org")
-        response = client.post(
-            "/report-sighting",
-            json={"search_query": "malicious.example.com", "type": "0"},
-            headers={"API-TOKEN": TEST_API_KEY, "Accept": "application/json"},
+        assert response.status_code == 302
+        assert sum(s for _, s in _state(app)) == sum(s for _, s in before) + 1
+
+    def test_untrusted_org_user_cannot_vote(self, app: IOCLookupApp, authenticated_client: AuthenticatedClient) -> None:
+        authenticated_client.set_user("someone@untrusted.org")
+        before = _state(app)
+        response = authenticated_client.post(
+            "/report-sighting", data={"search_query": "malicious.example.com", "type": "0"}
         )
         assert response.status_code == 401
+        assert _state(app) == before
 
 
 class TestResolveSecuritySettings:
