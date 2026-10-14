@@ -1404,6 +1404,27 @@ class TestCsrfProtection:
         assert "administrator" in response.get_json()["message"]
         assert TEST_CSRF_TOKEN not in self._origin_logs
 
+    @pytest.mark.parametrize(
+        ("headers", "expected"),
+        [
+            ({"Referer": "http://evil.example/x"}, "Referer rejected"),
+            ({"Referer": "not a url"}, "Referer rejected"),
+            ({}, "no Origin or Referer"),
+        ],
+    )
+    def test_referer_and_missing_origin_rejections_logged(
+        self, app: IOCLookupApp, client: FlaskClient, headers: dict[str, str], expected: str
+    ) -> None:
+        token = prime_csrf(client)
+        with patch.object(app.logger, "warning") as warning:
+            response = client.post("/report", data={"csrf_token": token}, headers=headers, environ_base=USER_ENV)
+        logs = " ".join(str(c.args[0]) for c in warning.call_args_list)
+        assert response.status_code == 403
+        assert expected in logs
+        assert "expected one of" in logs
+        assert "TRUSTED_ORIGINS" in logs
+        assert token not in logs
+
     def test_trusted_origins_accepts_https(self, app: IOCLookupApp, client: FlaskClient) -> None:
         response = self._origin_post(app, client, "https://localhost", ["https://localhost"])
         assert response.status_code != 403

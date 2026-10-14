@@ -127,9 +127,9 @@ def _allowed_origins() -> set[str]:
     return allowed
 
 
-def _log_origin_rejection(allowed: set[str], origin: str, normalised: str | None) -> None:
+def _log_origin_rejection(allowed: set[str], origin: str, normalised: str | None, header: str = "Origin") -> None:
     message = (
-        f"Origin rejected: expected one of {sorted(allowed)}, got {_safe_log_value(origin)}; "
+        f"{header} rejected: expected one of {sorted(allowed)}, got {_safe_log_value(origin)}; "
         "set TRUSTED_ORIGINS if behind a proxy that changes scheme/host"
     )
     if normalised is not None:
@@ -157,6 +157,12 @@ def check_origin() -> None:
         normalised = _normalise_origin(referer)
         if normalised is not None and normalised in allowed:
             return
+        _log_origin_rejection(allowed, referer, normalised, header="Referer")
+    else:
+        current_app.logger.warning(
+            f"Origin rejected: no Origin or Referer header, expected one of {sorted(allowed)}; "
+            "set TRUSTED_ORIGINS if behind a proxy that changes scheme/host"
+        )
     raise OriginError()
 
 
