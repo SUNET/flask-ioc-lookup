@@ -178,7 +178,7 @@ def is_trusted_user(userid: str) -> bool:
 
 
 def get_org_domain(userid: str) -> str:
-    return userid.split("@")[-1].lower()
+    return userid.rsplit("@", 1)[-1].lower()
 
 
 def in_trusted_orgs(userid: str) -> bool:

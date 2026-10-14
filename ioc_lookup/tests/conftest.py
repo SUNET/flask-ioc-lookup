@@ -257,15 +257,17 @@ class MockPyMISP:
 class MockMISPApi(MISPApi):
     """Mock MISPApi that uses MockPyMISP instead of real ExpandedPyMISP."""
 
+    pymisp: Any
+
     def __init__(self, name: str = "mock", api_url: str = "https://mock-misp/", api_key: str = "mock-key") -> None:
         self.name = name
-        self.pymisp = MockPyMISP(api_url, api_key, ssl=True)  # type: ignore[assignment]
+        self.pymisp = MockPyMISP(api_url, api_key, ssl=True)
 
     def reset(self) -> None:
         """Reset the mock to initial state."""
-        self.pymisp._attributes = {attr["value"]: attr for attr in SAMPLE_ATTRIBUTES}  # type: ignore[attr-defined]
-        self.pymisp._sightings = list(SAMPLE_SIGHTINGS)  # type: ignore[attr-defined]
-        self.pymisp._events = [SAMPLE_EVENT]  # type: ignore[attr-defined]
+        self.pymisp._attributes = {attr["value"]: attr for attr in SAMPLE_ATTRIBUTES}
+        self.pymisp._sightings = list(SAMPLE_SIGHTINGS)
+        self.pymisp._events = [SAMPLE_EVENT]
 
 
 @pytest.fixture
