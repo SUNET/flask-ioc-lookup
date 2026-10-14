@@ -194,6 +194,9 @@ def resolve_security_settings(yaml_config: Mapping[str, Any], env: Mapping[str, 
     secret_key = env.get("IOC_LOOKUP_SECRET_KEY") or yaml_config.get("SECRET_KEY")
     if not secret_key:
         raise ValueError("SECRET_KEY must be set in the config file or in environment variable IOC_LOOKUP_SECRET_KEY")
+    if not isinstance(secret_key, str) or not secret_key.strip():
+        # Never include the value in the message
+        raise ValueError("SECRET_KEY must be a non-blank string")
     resolved: dict[str, Any] = {"SECRET_KEY": secret_key}
     for key, default in SESSION_COOKIE_DEFAULTS.items():
         value = yaml_config.get(key)

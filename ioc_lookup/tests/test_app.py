@@ -775,6 +775,12 @@ class TestResolveSecuritySettings:
         with pytest.raises(ValueError, match="SECRET_KEY"):
             resolve_security_settings({"SECRET_KEY": ""}, {"IOC_LOOKUP_SECRET_KEY": ""})
 
+    @pytest.mark.parametrize("bad", [123, True, ["a"], {"a": "b"}, b"bytes", "   "])
+    def test_non_string_secret_key_rejected(self, bad: Any) -> None:  # noqa: ANN401
+        with pytest.raises(ValueError, match="non-blank string") as exc_info:
+            resolve_security_settings({"SECRET_KEY": bad}, {})
+        assert str(bad) not in str(exc_info.value) or str(bad).strip() == ""
+
 
 class TestConfigFailures:
     def test_missing_secret_raises_and_logs(self) -> None:
