@@ -39,6 +39,7 @@ from ioc_lookup.utils import (
     load_api_keys,
     misp_api_for,
     request_to_data,
+    resolve_identifier,
     utc_now,
     validate_rate_limits,
 )
@@ -147,7 +148,7 @@ def rate_limit_key() -> str:
     """
     Rate limit key. Slack requests never use REMOTE_USER/API-TOKEN: verified ones are keyed per Slack workspace
     (team_id), unverified ones per remote address so forged fields cannot reset or spread the bucket.
-    Everything else keeps the user identity (and 401 without one outside debug mode).
+    Everything else is keyed by user identity, or by IP when there is no valid identity (the view still 401s).
     """
     if request.endpoint == "slacksearch":
         # Must run before anything reads request.form: verification reads the raw body with get_data(cache=True)
@@ -155,7 +156,13 @@ def rate_limit_key() -> str:
             team_id = request.form.get("team_id", "")
             return f"slack:{team_id}" if re.fullmatch(r"[A-Z0-9]{1,32}", team_id) else "slack"
         return f"slack-unverified:{get_remote_address()}"
-    return get_ipaddr_or_eppn()
+    identifier = resolve_identifier()
+    if identifier:
+        return identifier
+    if app.config.get("DEBUG", False):
+        return get_ipaddr_or_eppn()  # debug mode falls back to the remote address
+    # No or unknown credentials: count by IP (never by token value) so rejected requests can be rate limited
+    return f"anon:{get_remote_address()}"
 
 
 # Default limits are enforced in flask-limiter's before_request, which runs before the CSRF hook, so rejected

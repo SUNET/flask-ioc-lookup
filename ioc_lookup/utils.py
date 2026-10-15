@@ -130,11 +130,11 @@ def request_to_data() -> dict[str, Any]:
         raise ParseException("No input found", errors=[InputError(line=0, message="No input found")])
 
 
-def get_ipaddr_or_eppn() -> str:
+def resolve_identifier() -> str | None:
     """
-    Uses eppn if supplied else remote address for rate limiting
+    Resolve the request identity without aborting: HTTP_REMOTE_USER, overridden by the owner of an API-TOKEN.
+    An unknown API-TOKEN gives None (it does not fall back to REMOTE_USER).
     """
-    # Get identifier by HTTP_REMOTE_USER
     current_ioc_lookup_app.logger.debug("REQUEST ENVIRONMENT:")
     current_ioc_lookup_app.logger.debug(request.environ)
     identifier = request.environ.get("HTTP_REMOTE_USER", None)
@@ -145,7 +145,14 @@ def get_ipaddr_or_eppn() -> str:
     if api_key is not None:
         identifier = current_ioc_lookup_app.api_keys.get(api_key)
         current_ioc_lookup_app.logger.debug(f"Identifier from api key: {identifier}")
+    return identifier or None
 
+
+def get_ipaddr_or_eppn() -> str:
+    """
+    Uses eppn if supplied else remote address for rate limiting
+    """
+    identifier = resolve_identifier()
     if not identifier:
         current_ioc_lookup_app.logger.warning("HTTP_REMOTE_USER and HTTP_API_TOKEN is missing from request environment")
         if current_ioc_lookup_app.config.get("DEBUG", False) is False:

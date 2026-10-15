@@ -48,6 +48,7 @@ set the optional `SLACK_RATE_LIMIT` to give Slack its own limit. When it is hit 
 - `MAX_CONTENT_LENGTH` defaults to 1 MiB.
 - The Slack endpoint now works when `DEBUG` is false (it previously returned 401 without a `REMOTE_USER`).
   Slack requests never use `REMOTE_USER` or `API-TOKEN`.
+- Requests without valid credentials are now rate limited by IP before authentication.
 - New optional `SLACK_RATE_LIMIT` (default: `REQUEST_RATE_LIMIT`). Consider raising it, since Slack shows
   `dispatch_failed` when a request is rate limited.
 - `REQUEST_RATE_LIMIT` is now enforced before the CSRF checks, so rejected requests count against it too.

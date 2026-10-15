@@ -1666,3 +1666,39 @@ class TestSlackProductionMode:
         with pytest.raises(RuntimeError, match="SLACK_RATE_LIMIT"):
             validate_rate_limits({"SLACK_RATE_LIMIT": "bogus"}, logger)
         logger.error.assert_called_once()
+
+    @pytest.mark.usefixtures("slack_limit")
+    def test_anonymous_requests_rate_limited_by_ip(self, app: IOCLookupApp, client: FlaskClient) -> None:
+        assert [client.get("/").status_code for _ in range(4)] == [401, 401, 401, 429]
+
+    @pytest.mark.usefixtures("slack_limit")
+    def test_anonymous_post_rate_limited(self, app: IOCLookupApp, client: FlaskClient) -> None:
+        token = prime_csrf(client)
+        codes = [
+            client.post(
+                "/report", data={**CSRF_ENDPOINTS["/report"], "csrf_token": token}, headers={"Origin": TEST_ORIGIN}
+            ).status_code
+            for _ in range(4)
+        ]
+        assert codes == [401, 401, 401, 429]
+
+    @pytest.mark.usefixtures("slack_limit")
+    def test_unknown_api_token_keyed_by_ip(self, app: IOCLookupApp, client: FlaskClient) -> None:
+        codes = [client.get("/", headers={"API-TOKEN": f"unknown-{i}"}).status_code for i in range(4)]
+        assert codes == [401, 401, 401, 429]
+
+    @pytest.mark.usefixtures("slack_limit")
+    def test_unknown_api_token_overrides_remote_user(self, app: IOCLookupApp, client: FlaskClient) -> None:
+        codes = [
+            client.get("/", headers={"API-TOKEN": f"unknown-{i}"}, environ_base=USER_ENV).status_code for i in range(4)
+        ]
+        assert codes == [401, 401, 401, 429]
+        # The REMOTE_USER bucket was not used up by the failed attempts
+        assert client.get("/report", environ_base=USER_ENV).status_code == 200
+
+    @pytest.mark.usefixtures("slack_limit")
+    def test_authenticated_bucket_separate_from_anonymous(self, app: IOCLookupApp, client: FlaskClient) -> None:
+        for _ in range(4):
+            client.get("/")
+        assert client.get("/").status_code == 429
+        assert client.get("/", environ_base=USER_ENV).status_code == 200
