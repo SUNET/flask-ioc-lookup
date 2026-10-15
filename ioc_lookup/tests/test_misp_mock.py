@@ -219,7 +219,7 @@ class TestMockErrorSimulation:
         from ioc_lookup.misp_api import RequestException
 
         # Configure error
-        mock_misp_api.pymisp.simulate_error(403, "Permission denied")  # type: ignore[union-attr]
+        mock_misp_api.pymisp.simulate_error(403, "Permission denied")
 
         # Search should raise RequestException due to error handling in MISPApi
         with pytest.raises(RequestException, match="Permission denied"):
@@ -228,7 +228,7 @@ class TestMockErrorSimulation:
     def test_error_clears_after_single_use(self, mock_misp_api: MockMISPApi) -> None:
         """Test that error simulation clears after being triggered."""
         # Configure error
-        mock_misp_api.pymisp.simulate_error(500, "Server error")  # type: ignore[union-attr]
+        mock_misp_api.pymisp.simulate_error(500, "Server error")
 
         # First call should get the error (but MISPApi will raise, so we catch it)
         try:
@@ -244,10 +244,10 @@ class TestMockErrorSimulation:
     def test_clear_error_manually(self, mock_misp_api: MockMISPApi) -> None:
         """Test manual error clearing."""
         # Configure error
-        mock_misp_api.pymisp.simulate_error(403, "Permission denied")  # type: ignore[union-attr]
+        mock_misp_api.pymisp.simulate_error(403, "Permission denied")
 
         # Clear it manually
-        mock_misp_api.pymisp.clear_error()  # type: ignore[union-attr]
+        mock_misp_api.pymisp.clear_error()
 
         # Search should succeed
         result = mock_misp_api.search()
@@ -259,17 +259,17 @@ class TestMockErrorSimulation:
         from ioc_lookup.misp_attributes import Attr, AttrType
 
         # Configure error
-        mock_misp_api.pymisp.simulate_error(405, "Method not allowed")  # type: ignore[union-attr]
+        mock_misp_api.pymisp.simulate_error(405, "Method not allowed")
 
         attr = Attr(value="test.com", type=AttrType.DOMAIN)
 
         # add_sighting returns the result directly without error handling
-        result = mock_misp_api.pymisp.add_sighting(  # type: ignore[union-attr]
-            type(mock_misp_api.pymisp)("", "", True),  # type: ignore[arg-type]
+        result = mock_misp_api.pymisp.add_sighting(
+            type(mock_misp_api.pymisp)("", "", True),
             pythonify=False,
         )
         # The error was consumed, so we need to set it again for proper test
-        mock_misp_api.pymisp.simulate_error(405, "Method not allowed")  # type: ignore[union-attr]
+        mock_misp_api.pymisp.simulate_error(405, "Method not allowed")
 
         # Direct call to mock should return error dict
         from pymisp.mispevent import MISPSighting
@@ -278,7 +278,7 @@ class TestMockErrorSimulation:
         sighting["value"] = attr.value
         sighting["type"] = "0"
         sighting["source"] = "test"
-        result = mock_misp_api.pymisp.add_sighting(sighting, pythonify=False)  # type: ignore[union-attr]
+        result = mock_misp_api.pymisp.add_sighting(sighting, pythonify=False)
         assert isinstance(result, dict)
         assert "errors" in result
 
@@ -310,7 +310,7 @@ class TestMockDynamicAttributes:
     def test_reset_restores_attributes(self, mock_misp_api: MockMISPApi) -> None:
         """Test that reset() restores _attributes to initial state."""
         # Add a dynamic attribute
-        mock_misp_api.pymisp._attributes["temp.example.com"] = {  # type: ignore[union-attr]
+        mock_misp_api.pymisp._attributes["temp.example.com"] = {
             "id": "888",
             "event_id": "888",
             "type": "domain",

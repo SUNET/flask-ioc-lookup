@@ -25,3 +25,5 @@ ALLOWED_EVENT_TAGS:
   - "Phishing"
   - "Malware"
   - "C2"
+SECRET_KEY: 'test-secret-key'
+SESSION_COOKIE_SECURE: false

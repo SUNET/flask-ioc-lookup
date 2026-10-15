@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/bootstrap.min.css') }}" integrity="sha384-ggOyR0iXCbMQv3Xipma34MD+dH/1fQ784/j6cY/iJTQUOhcWr7x9JvoRxT2MZw1T">
+    <title>IOC lookup - Request rejected</title>
+</head>
+<body>
+<main class="container">
+    <h3 class="pt-3">Request rejected ({{ status }})</h3>
+    <p>{{ message }}</p>
+    <p>Request rejected, reload the page and try again.</p>
+    <p><a href="{{ url_for('index') }}">Back to search</a></p>
+</main>
+</body>
+</html>

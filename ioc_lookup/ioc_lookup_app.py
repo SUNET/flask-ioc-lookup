@@ -17,7 +17,7 @@ class TrustedOrg:
 class IOCLookupApp(Flask):
     trusted_users: list[str] = []
     trusted_orgs: dict[str, TrustedOrg] = {}
-    api_keys: dict[str, dict[str, str]] = {}
+    api_keys: dict[str, str] = {}
     misp_apis: dict[str, MISPApi] | None
 
 

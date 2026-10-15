@@ -1,6 +1,7 @@
 __author__ = "lundberg"
 
-from collections.abc import Iterator
+import logging
+from collections.abc import Iterator, Mapping, MutableMapping
 from contextlib import contextmanager
 from copy import copy
 from dataclasses import dataclass, field
@@ -129,11 +130,11 @@ def request_to_data() -> dict[str, Any]:
         raise ParseException("No input found", errors=[InputError(line=0, message="No input found")])
 
 
-def get_ipaddr_or_eppn() -> str:
+def resolve_identifier() -> str | None:
     """
-    Uses eppn if supplied else remote address for rate limiting
+    Resolve the request identity without aborting: HTTP_REMOTE_USER, overridden by the owner of an API-TOKEN.
+    An unknown API-TOKEN gives None (it does not fall back to REMOTE_USER).
     """
-    # Get identifier by HTTP_REMOTE_USER
     current_ioc_lookup_app.logger.debug("REQUEST ENVIRONMENT:")
     current_ioc_lookup_app.logger.debug(request.environ)
     identifier = request.environ.get("HTTP_REMOTE_USER", None)
@@ -144,7 +145,14 @@ def get_ipaddr_or_eppn() -> str:
     if api_key is not None:
         identifier = current_ioc_lookup_app.api_keys.get(api_key)
         current_ioc_lookup_app.logger.debug(f"Identifier from api key: {identifier}")
+    return identifier or None
 
+
+def get_ipaddr_or_eppn() -> str:
+    """
+    Uses eppn if supplied else remote address for rate limiting
+    """
+    identifier = resolve_identifier()
     if not identifier:
         current_ioc_lookup_app.logger.warning("HTTP_REMOTE_USER and HTTP_API_TOKEN is missing from request environment")
         if current_ioc_lookup_app.config.get("DEBUG", False) is False:
@@ -154,6 +162,18 @@ def get_ipaddr_or_eppn() -> str:
         identifier = get_remote_address()
         current_ioc_lookup_app.logger.debug(f"Identifier from get_ipaddr: {identifier}")
     return identifier
+
+
+SLACK_USER_IDENTIFIER = "slack"
+
+
+def get_slack_user() -> User:
+    """
+    The fixed identity for Slack requests. A constant, never derived from request data: Slack callers get no
+    trusted rights. org_domain "default" is a key of misp_apis, so lookups use the default MISP key and never
+    lazy-load an org specific key.
+    """
+    return User(identifier=SLACK_USER_IDENTIFIER, is_trusted_user=False, in_trusted_org=False, org_domain="default")
 
 
 def get_user() -> User:
@@ -177,8 +197,82 @@ def is_trusted_user(userid: str) -> bool:
     return False
 
 
+SESSION_COOKIE_DEFAULTS: dict[str, Any] = {
+    "SESSION_COOKIE_NAME": "ioc_lookup_session",
+    "SESSION_COOKIE_SECURE": True,
+    "SESSION_COOKIE_SAMESITE": "Lax",
+    "SESSION_COOKIE_HTTPONLY": True,
+}
+
+
+def resolve_security_settings(yaml_config: Mapping[str, Any], env: Mapping[str, str]) -> dict[str, Any]:
+    """
+    Resolve SECRET_KEY (env IOC_LOOKUP_SECRET_KEY wins over YAML) and the SESSION_COOKIE_* settings
+    (YAML value if set and not null, else the secure default). Raises ValueError if there is no secret key.
+    """
+    secret_key = env.get("IOC_LOOKUP_SECRET_KEY") or yaml_config.get("SECRET_KEY")
+    if not secret_key:
+        raise ValueError("SECRET_KEY must be set in the config file or in environment variable IOC_LOOKUP_SECRET_KEY")
+    if not isinstance(secret_key, str) or not secret_key.strip():
+        # Never include the value in the message
+        raise ValueError("SECRET_KEY must be a non-blank string")
+    resolved: dict[str, Any] = {"SECRET_KEY": secret_key}
+    for key, default in SESSION_COOKIE_DEFAULTS.items():
+        value = yaml_config.get(key)
+        resolved[key] = default if value is None else value
+    return resolved
+
+
+def apply_security_settings(
+    config: MutableMapping[str, Any], yaml_config: Mapping[str, Any], env: Mapping[str, str], logger: logging.Logger
+) -> None:
+    """Resolve security settings into config. On failure log the error and raise RuntimeError."""
+    try:
+        config.update(resolve_security_settings(yaml_config, env))
+    except ValueError as e:
+        logger.error(str(e))
+        raise RuntimeError(str(e)) from None
+
+
+def load_api_keys(raw: object, logger: logging.Logger) -> dict[str, str]:
+    """Validate loaded api keys. On failure log the error and raise RuntimeError (never including key values)."""
+    try:
+        return validate_api_keys(raw)
+    except ValueError as e:
+        logger.error(str(e))
+        raise RuntimeError(str(e)) from None
+
+
+def validate_rate_limits(config: Mapping[str, Any], logger: logging.Logger) -> None:
+    """Check the rate limit strings parse. On failure log the error and raise RuntimeError."""
+    from limits import parse_many
+
+    for key in ("REQUEST_RATE_LIMIT", "SLACK_RATE_LIMIT"):
+        value = config.get(key)
+        if value is None or (isinstance(value, str) and not value.strip()):
+            continue
+        try:
+            parse_many(value)
+        except Exception:
+            message = f"{key} is not a valid rate limit string, expected for example '10/minute'"
+            logger.error(message)
+            raise RuntimeError(message) from None
+
+
+def validate_api_keys(raw: object) -> dict[str, str]:
+    """Return the api key -> eppn mapping, raising ValueError (never including key values) if malformed."""
+    if raw is None:
+        return {}
+    if not isinstance(raw, dict):
+        raise ValueError("api_keys must be a mapping of api key to eppn")
+    bad = sum(1 for k, v in raw.items() if not (isinstance(k, str) and k and isinstance(v, str) and v.strip()))
+    if bad:
+        raise ValueError(f"api_keys has {bad} invalid entries, expected non-empty string key -> non-empty string eppn")
+    return dict(raw)
+
+
 def get_org_domain(userid: str) -> str:
-    return userid.split("@")[-1].lower()
+    return userid.rsplit("@", 1)[-1].lower()
 
 
 def in_trusted_orgs(userid: str) -> bool:
